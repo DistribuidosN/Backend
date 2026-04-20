@@ -1,0 +1,225 @@
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX3V1aWQiOiI5OWZhYTg5Ny0xNTIyLTRkYmQtYWM2Zi1jOTgzZTU1ZTAyNmMiLCJ1c2VybmFtZSI6Imp1YW4iLCJyb2xlIjoiMSIsImlzcyI6ImF1dGgtc2VydmVyIiwic3ViIjoiOTlmYWE4OTctMTUyMi00ZGJkLWFjNmYtYzk4M2U1NWUwMjZjIiwiZXhwIjoxNzc2NzM4NjQ4LCJpYXQiOjE3NzY2NTIyNDh9.0JbMTS_LKZd7T0wl-qYR0LCvjXAzVH-wEAcz8U3cdkU
+@baseUrl = http://localhost:8080/services
+
+### =========================================================================
+###  [ 1 ] AUTH ENDPOINTS
+### =========================================================================
+
+### 1.1 Iniciar Sesión (logIn)
+POST {{baseUrl}}/auth HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://auth.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:logIn>
+         <username>juan</username>
+         <password>123456</password>
+      </enf:logIn>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 1.2 Registrar Usuario (register)
+POST {{baseUrl}}/auth HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://auth.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:register>
+         <user>
+            <username>nuevo_user_test</username>
+            <password>password123</password>
+         </user>
+      </enf:register>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 1.3 Cerrar Sesión (logOut)
+POST {{baseUrl}}/auth HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://auth.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:logOut/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 1.4 Validar Token (validateToken)
+POST {{baseUrl}}/auth HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://auth.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:validateToken/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 1.5 Olvidé Contraseña (forgetPwd)
+POST {{baseUrl}}/auth HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://auth.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:forgetPwd>
+         <email>juan@example.com</email>
+         <newPassword>newpassword123</newPassword>
+      </enf:forgetPwd>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 1.6 Reiniciar Contraseña (resetPassword)
+POST {{baseUrl}}/auth HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://auth.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:resetPassword>
+         <newPassword>resetpassword456</newPassword>
+      </enf:resetPassword>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+
+
+### =========================================================================
+###  [ 2 ] USER ENDPOINTS (REQUIERE TOKEN)
+### =========================================================================
+
+### 2.1 Obtener Perfil (profile)
+POST {{baseUrl}}/user HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://user.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:profile/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 2.2 Actualizar Perfil (updateProfile)
+POST {{baseUrl}}/user HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://user.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:updateProfile>
+         <userData>
+            <username>juan_updated</username>
+            <status>1</status>
+         </userData>
+      </enf:updateProfile>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 2.3 Ver Actividad (getUserActivity)
+POST {{baseUrl}}/user HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://user.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:getUserActivity/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 2.4 Buscar Usuario por ID (searchUser)
+POST {{baseUrl}}/user HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://user.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:searchUser>
+         <uid>99faa897-1522-4dbd-ac6f-c983e55e026c</uid>
+      </enf:searchUser>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 2.5 Eliminar Cuenta (deleteAccount)
+POST {{baseUrl}}/user HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://user.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:deleteAccount/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 2.6 Ver Estadísticas (getUserStatistics)
+POST {{baseUrl}}/user HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://user.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:getUserStatistics/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+
+
+
+### =========================================================================
+###  [ 3 ] UPLOAD IMAGES (NODE ENDPOINT)
+### =========================================================================
+
+### 3.1 Subir Imagen Simple (uploadImages - 1 filtro)
+POST {{baseUrl}}/node HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://node.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:uploadImages>
+         <imageData>iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==</imageData>
+         <fileName>test_simple.png</fileName>
+         <transformations>
+            <name>grayscale</name>
+         </transformations>
+      </enf:uploadImages>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+### 3.2 Subir Imagen Completa (Múltiples Filtros)
+POST {{baseUrl}}/node HTTP/1.1
+Content-Type: text/xml; charset=utf-8
+Authorization: Bearer {{token}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:enf="http://node.soap.model.server.enfok/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <enf:uploadImages>
+         <imageData>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</imageData>
+         <fileName>test_completo.png</fileName>
+         <transformations>
+            <name>inference</name>
+         </transformations>
+         <transformations>
+            <name>blur</name>
+         </transformations>
+         <transformations>
+            <name>grayscale</name>
+         </transformations>
+         <transformations>
+            <name>ocr</name>
+         </transformations>
+      </enf:uploadImages>
+   </soapenv:Body>
+</soapenv:Envelope>

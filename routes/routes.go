@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"Backend/clients"
 	"Backend/handlers"
+	"Backend/repository"
 	"Backend/services"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -11,45 +11,68 @@ import (
 func SetupRoutes() *gin.Engine {
 	r := gin.Default()
 
-	// Dependencies
-	soapClient := clients.NewSoapClient("http://servidor-java:8081/ws/image-process")
-	batchService := services.NewBatchService(soapClient)
-	batchHandler := handlers.NewBatchHandler(batchService)
+	// Configuration (URLs for SOAP services)
+	const (
+		authSoapURL = "http://localhost:8080/services/auth"
+		userSoapURL = "http://localhost:8080/services/user"
+		nodeSoapURL = "http://localhost:8080/services/node"
+	)
 
-	productService := services.NewProductService()
-	productHandler := handlers.NewProductHandler(productService)
+	// 1. Repositories (Adapters)
+	authRepo := repository.NewAuthSoapRepository(authSoapURL)
+	userRepo := repository.NewUserSoapRepository(userSoapURL)
+	nodeRepo := repository.NewNodeRepository(nodeSoapURL)
 
-	// Router
+	// 2. Services (Logic)
+	authService := services.NewAuthService(authRepo)
+	userService := services.NewUserService(userRepo)
+	nodeService := services.NewNodeService(nodeRepo)
+
+	// 3. Handlers (Delivery)
+	authHandler := handlers.NewAuthHandler(authService)
+	userHandler := handlers.NewUserHandler(userService)
+	nodeHandler := handlers.NewNodeHandler(nodeService)
+
+	// Router setup
 	apiV1 := r.Group("/api/v1")
 	{
-		apiV1.POST("/batch", batchHandler.UploadBatch)
-
-		products := apiV1.Group("/products")
+		// Auth Routes
+		auth := apiV1.Group("/auth")
 		{
-			products.GET("", productHandler.GetProducts)
-			products.POST("", productHandler.CreateProduct)
-			products.GET("/:id", productHandler.GetProduct)
-			products.PUT("/:id", productHandler.UpdateProduct)
-			products.DELETE("/:id", productHandler.DeleteProduct)
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/logout", authHandler.LogOut)
+			auth.GET("/validate", authHandler.ValidateToken)
+			auth.POST("/forget-password", authHandler.ForgetPwd)
+			auth.POST("/reset-password", authHandler.ResetPassword)
+		}
+
+		// User Routes
+		user := apiV1.Group("/user")
+		{
+			user.GET("/profile", userHandler.GetProfile)
+			user.PUT("/profile", userHandler.UpdateProfile)
+			user.GET("/activity", userHandler.GetActivity)
+			user.GET("/search", userHandler.SearchUser)
+			user.DELETE("/account", userHandler.DeleteAccount)
+			user.GET("/statistics", userHandler.GetStatistics)
+		}
+
+		// Node Routes
+		node := apiV1.Group("/node")
+		{
+			node.POST("/upload", nodeHandler.UploadImages)
 		}
 	}
-	
-	r.GET("/api", func(c *gin.Context) {
-		routes := []struct {
-			Method string `json:"method"`
-			Path   string `json:"path"`
-		}{
-			{Method: "POST", Path: "/api/v1/batch"},
-			{Method: "GET", Path: "/api"},
-			{Method: "GET", Path: "/api/v1/products/"},
-			{Method: "POST", Path: "/api/v1/products/"},
-			{Method: "GET", Path: "/api/v1/products/{id}"},
-			{Method: "PUT", Path: "/api/v1/products/{id}"},
-			{Method: "DELETE", Path: "/api/v1/products/{id}"},
-		}
-		c.JSON(http.StatusOK, routes)
-	})
 
+	// Health check / Info
+	r.GET("/info", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "up",
+			"version": "1.0.0",
+			"description": "Backend Proxy for SOAP Services",
+		})
+	})
 
 	return r
 }
