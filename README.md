@@ -1,31 +1,87 @@
-# 🌉 API Gateway & Middleware - Image Processing System
+# 🌉 Distributed Systems Backend - API Gateway (Go)
 
-Este repositorio contiene el código fuente del **API Gateway (BFF - Backend for Frontend)** desarrollado en Go. Este microservicio actúa como el intermediario principal entre las aplicaciones cliente (ej. aplicación móvil en Flutter) y el Orquestador Central del sistema distribuido.
+Este servicio actúa como el **API Gateway** central del sistema. Su función principal es servir de puente entre las aplicaciones cliente (REST/JSON) y el Servidor Central (SOAP/XML), permitiendo una comunicación fluida y segura.
 
-Su responsabilidad arquitectónica principal es aislar a los clientes de la complejidad de la infraestructura interna, exponiendo una interfaz RESTful moderna y traduciendo estas peticiones al protocolo SOAP requerido por el servidor central (Java), garantizando un bajo acoplamiento y alta cohesión.
+## 🏗️ Arquitectura del Sistema
 
-## 🚀 Características Principales
+El sistema sigue un flujo de datos en tres capas para garantizar el desacoplamiento:
 
-* **Traducción de Protocolos:** Recibe peticiones HTTP/REST con cargas útiles en JSON y las empaqueta dinámicamente en *Envelopes* XML para su transmisión vía SOAP.
-* **Procesamiento por Lotes (Batch):** Optimización de red mediante endpoints dedicados para la ingesta de múltiples imágenes en una sola petición (`UploadBatch`).
-* **Soporte de Transformaciones:** Enrutamiento de parámetros para operaciones de procesamiento intensivo (ej. `GRAYSCALE`, `BLUR`, `SHARPEN`, `RESIZE`, `ROTATE`).
-* **Middleware de Seguridad y Trazabilidad:** Implementación de *Recovery* nativo para prevenir caídas por *panics* y *Logger* para auditoría de tráfico.
+```mermaid
+graph TD
+    Client[Cliente REST/JSON]
+    Proxy[Go Backend Proxy - Port 50021]
+    Java[Quarkus Central Server - Port 8080]
+    Auth[Go Auth API - Port 8081]
+    Nodes[Nodos de Procesamiento Python]
 
-## 🧩 Arquitectura (Flujo de Datos)
+    Client -- HTTP/JSON --> Proxy
+    Proxy -- SOAP/XML --> Java
+    Java -- HTTP/REST --> Auth
+    Java -- gRPC --> Nodes
+```
 
-El flujo de vida de una petición sigue una estructura lineal y estandarizada:
+### Tecnologías Utilizadas
+- **Lenguaje:** Go 1.22+
+- **Framework Web:** Gin Gonic
+- **Protocolos:** REST (Entrada), SOAP (Salida hacia Core)
+- **Seguridad:** JWT (Stateless)
+
+---
+
+## 📡 Endpoints de la API
+
+### 🔐 Autenticación (`/api/v1/auth`)
+
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `POST` | `/login` | Inicia sesión y devuelve un token JWT. |
+| `POST` | `/register` | Registra un nuevo usuario en el sistema. |
+| `POST` | `/logout` | Invalida la sesión actual (vía Header Auth). |
+| `GET`  | `/validate` | Verifica si el token actual es vigente. |
+| `POST` | `/forget-password` | Inicia el proceso de recuperación de contraseña. |
+| `POST` | `/reset-password` | Cambia la contraseña usando un token de recuperación. |
+
+### 👤 Gestión de Usuarios (`/api/v1/user`)
+
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `GET` | `/profile` | Obtiene los datos del perfil del usuario autenticado. |
+| `PUT` | `/profile` | Actualiza la información del perfil (Nombre, Email, etc). |
+| `GET` | `/activity` | Lista las últimas acciones realizadas por el usuario. |
+| `GET` | `/search` | Busca otros usuarios en el sistema por UID. |
+| `GET` | `/statistics` | Estadísticas de uso (imágenes procesadas, etc). |
+| `DELETE` | `/account` | Elimina la cuenta del usuario actual. |
+
+### 🖼️ Procesamiento de Imágenes (`/api/v1/node`)
+
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `POST` | `/upload` | Envía imágenes y una lista de transformaciones para procesar. |
+
+---
+
+## 🛠️ Estructura del Proyecto
 
 ```text
-[Cliente Móvil / Web] 
-       │
-       ▼ (REST / JSON)
-┌─────────────────────────────────┐
-│       Go API Gateway            │
-│  ├─ routes/   (Enrutamiento)    │
-│  ├─ handlers/ (Capa HTTP/Gin)   │
-│  ├─ services/ (Lógica de Negocio│
-│  └─ clients/  (Cliente SOAP)    │
-└─────────────────────────────────┘
-       │
-       ▼ (SOAP / XML)
-[Servidor Central Orquestador] -> (gRPC) -> [Nodos de Procesamiento]
+Backend/
+├── handlers/    # Controladores (Capa de entrada HTTP)
+├── models/      # Definiciones de datos y DTOs
+├── repository/  # Adaptadores de salida (Clientes SOAP)
+├── services/    # Lógica de negocio y orquestación
+├── routes/      # Configuración del enrutador Gin
+└── main.go      # Punto de entrada de la aplicación
+```
+
+## 🚀 Instalación y Ejecución
+
+1. Asegúrate de tener Go instalado.
+2. Clona el repositorio.
+3. Instala las dependencias:
+   ```bash
+   go mod tidy
+   ```
+4. Ejecuta el servidor:
+   ```bash
+   go run main.go
+   ```
+   *El servidor iniciará por defecto en `http://localhost:50021`*
