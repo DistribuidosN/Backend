@@ -56,7 +56,22 @@ graph TD
 
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
-| `POST` | `/upload` | Envía imágenes y una lista de transformaciones para procesar. |
+| `POST` | `/upload` | Envía una imagen individual para procesamiento síncrono. |
+
+### 📦 Procesamiento por Lotes (Asíncrono) (`/api/v1/node/batch`)
+
+Permite el procesamiento masivo de imágenes mediante un flujo de trabajo basado en tareas (Jobs).
+
+| Método | Endpoint | Descripción |
+| :--- | :--- | :--- |
+| `POST` | `/batch` | Envía un lote de imágenes (o un .zip) y filtros. Retorna un `jobId`. |
+| `GET` | `/batch/:id/status` | Consulta el estado del progreso (`PENDING`, `PROCESSING`, `COMPLETED`). |
+| `GET` | `/batch/:id/results` | Recupera las imágenes procesadas y las guarda localmente en `/images/`. |
+
+**Flujo de trabajo asíncrono:**
+1. **Envío:** El cliente sube el lote de imágenes. El sistema valida y encola la tarea, devolviendo un identificador único.
+2. **Monitoreo:** El cliente realiza polling al endpoint de status hasta que el estado cambie a `COMPLETED`.
+3. **Descarga:** Al solicitar los resultados, el backend recupera las versiones procesadas, las decodifica de Base64 y las persiste físicamente en el servidor para su posterior uso.
 
 ---
 
