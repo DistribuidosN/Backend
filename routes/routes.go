@@ -77,6 +77,13 @@ func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandle
 	node := group.Group("/node")
 	{
 		node.POST("/upload", nodeHandler.UploadImages)
-		node.POST("/batch", nodeHandler.UploadBatch)
+
+		// Async Batch Routes
+		batch := node.Group("/batch")
+		{
+			batch.POST("", nodeHandler.ProcessBatch)
+			batch.GET("/:id/status", nodeHandler.GetBatchStatus)
+			batch.GET("/:id/results", nodeHandler.GetBatchResults)
+		}
 	}
 }

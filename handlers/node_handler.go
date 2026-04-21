@@ -4,7 +4,6 @@ import (
 	"Backend/models/interfaces/ports"
 	"Backend/models/node"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -38,7 +37,7 @@ func (h *NodeHandler) UploadImages(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *NodeHandler) UploadBatch(c *gin.Context) {
+func (h *NodeHandler) ProcessBatch(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
@@ -47,26 +46,19 @@ func (h *NodeHandler) UploadBatch(c *gin.Context) {
 
 	form, err := c.MultipartForm()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid multipart form"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse multipart form"})
 		return
 	}
 
 	files := form.File["images"]
 	if len(files) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "images files are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no images provided"})
 		return
 	}
 
-	filters := normalizeFilters(form.Value["filters"])
-	if len(filters) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one filter is required"})
-		return
-	}
+	filters := form.Value["filters"]
 
-	resp, err := h.nodeService.UploadBatch(c.Request.Context(), token, node.BatchUploadRequest{
-		Files:   files,
-		Filters: filters,
-	})
+	resp, err := h.nodeService.ProcessBatch(c.Request.Context(), token, files, filters)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -75,15 +67,46 @@ func (h *NodeHandler) UploadBatch(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func normalizeFilters(raw []string) []string {
-	var filters []string
-	for _, value := range raw {
-		for _, item := range strings.Split(value, ",") {
-			trimmed := strings.TrimSpace(item)
-			if trimmed != "" {
-				filters = append(filters, trimmed)
-			}
-		}
+func (h *NodeHandler) GetBatchStatus(c *gin.Context) {
+	token := extractToken(c)
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		return
 	}
-	return filters
+
+	jobID := c.Param("id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing job id"})
+		return
+	}
+
+	resp, err := h.nodeService.GetBatchStatus(c.Request.Context(), token, jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *NodeHandler) GetBatchResults(c *gin.Context) {
+	token := extractToken(c)
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		return
+	}
+
+	jobID := c.Param("id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing job id"})
+		return
+	}
+
+	resp, err := h.nodeService.GetBatchResults(c.Request.Context(), token, jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
