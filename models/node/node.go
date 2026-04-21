@@ -1,6 +1,5 @@
 package node
 
-
 // ImageUploadRequest represents the data required to upload and transform images
 type ImageUploadRequest struct {
 	ImageData       string           `json:"imageData"`
@@ -53,4 +52,9 @@ type BatchStatusResponse struct {
 type BatchResultsResponse struct {
 	JobID  string      `json:"jobId"`
 	Images []ImageItem `json:"images"`
+}
+
+type BatchDownloadResponse struct {
+	JobID   string
+	Content []byte
 }

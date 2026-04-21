@@ -84,6 +84,7 @@ func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandle
 			batch.POST("", nodeHandler.ProcessBatch)
 			batch.GET("/:id/status", nodeHandler.GetBatchStatus)
 			batch.GET("/:id/results", nodeHandler.GetBatchResults)
+			batch.GET("/:id/download", nodeHandler.DownloadBatchResult)
 		}
 	}
 }
