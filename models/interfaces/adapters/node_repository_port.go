@@ -11,4 +11,5 @@ type NodeRepository interface {
 	UploadBatch(ctx context.Context, token string, req node.NodeBatchRequest) (node.BatchJobResponse, error)
 	GetBatchStatus(ctx context.Context, token string, jobID string) (node.BatchStatusResponse, error)
 	GetBatchResults(ctx context.Context, token string, jobID string) (node.BatchResultsResponse, error)
+	DownloadBatchResult(ctx context.Context, token string, jobID string) (node.BatchDownloadResponse, error)
 }

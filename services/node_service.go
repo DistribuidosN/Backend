@@ -68,3 +68,7 @@ func (s *nodeService) GetBatchResults(ctx context.Context, token string, jobID s
 	results.Images = reconvertedImages
 	return results, nil
 }
+
+func (s *nodeService) DownloadBatchResult(ctx context.Context, token string, jobID string) (node.BatchDownloadResponse, error) {
+	return s.repo.DownloadBatchResult(ctx, token, jobID)
+}

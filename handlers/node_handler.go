@@ -3,6 +3,7 @@ package handlers
 import (
 	"Backend/models/interfaces/ports"
 	"Backend/models/node"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -109,4 +110,28 @@ func (h *NodeHandler) GetBatchResults(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *NodeHandler) DownloadBatchResult(c *gin.Context) {
+	token := extractToken(c)
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		return
+	}
+
+	jobID := c.Param("id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing job id"})
+		return
+	}
+
+	resp, err := h.nodeService.DownloadBatchResult(c.Request.Context(), token, jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s-results.zip\"", resp.JobID))
+	c.Data(http.StatusOK, "application/zip", resp.Content)
 }

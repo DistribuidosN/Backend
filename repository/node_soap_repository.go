@@ -25,10 +25,11 @@ type nodeSoapEnvelope struct {
 	Soapenv string   `xml:"xmlns:soapenv,attr"`
 	Enf     string   `xml:"xmlns:enf,attr"`
 	Body    struct {
-		UploadImages    *uploadImagesRequest    `xml:"enf:uploadImages,omitempty"` // Lo dejamos igual asumiendo que no falla
-		UploadBatch     *uploadBatchWrapper     `xml:"enf:uploadBatch,omitempty"`
-		GetBatchStatus  *getBatchStatusWrapper  `xml:"enf:getBatchStatus,omitempty"`
-		GetBatchResults *getBatchResultsWrapper `xml:"enf:getBatchResults,omitempty"`
+		UploadImages        *uploadImagesRequest        `xml:"enf:uploadImages,omitempty"` // Lo dejamos igual asumiendo que no falla
+		UploadBatch         *uploadBatchWrapper         `xml:"enf:uploadBatch,omitempty"`
+		GetBatchStatus      *getBatchStatusWrapper      `xml:"enf:getBatchStatus,omitempty"`
+		GetBatchResults     *getBatchResultsWrapper     `xml:"enf:getBatchResults,omitempty"`
+		DownloadBatchResult *downloadBatchResultWrapper `xml:"enf:downloadBatchResult,omitempty"`
 	} `xml:"soapenv:Body"`
 }
 
@@ -43,6 +44,10 @@ type getBatchStatusRequest struct {
 }
 
 type getBatchResultsRequest struct {
+	JobID string `xml:"jobId"`
+}
+
+type downloadBatchResultRequest struct {
 	JobID string `xml:"jobId"`
 }
 
@@ -73,10 +78,11 @@ type uploadImagesBatchRequest struct {
 type nodeSoapResponse struct {
 	XMLName xml.Name `xml:"Envelope"`
 	Body    struct {
-		UploadImagesResponse    *uploadImagesResponse    `xml:"uploadImagesResponse,omitempty"`
-		UploadBatchResponse     *uploadBatchResponse     `xml:"uploadBatchResponse,omitempty"`
-		GetBatchStatusResponse  *getBatchStatusResponse  `xml:"getBatchStatusResponse,omitempty"`
-		GetBatchResultsResponse *getBatchResultsResponse `xml:"getBatchResultsResponse,omitempty"`
+		UploadImagesResponse        *uploadImagesResponse        `xml:"uploadImagesResponse,omitempty"`
+		UploadBatchResponse         *uploadBatchResponse         `xml:"uploadBatchResponse,omitempty"`
+		GetBatchStatusResponse      *getBatchStatusResponse      `xml:"getBatchStatusResponse,omitempty"`
+		GetBatchResultsResponse     *getBatchResultsResponse     `xml:"getBatchResultsResponse,omitempty"`
+		DownloadBatchResultResponse *downloadBatchResultResponse `xml:"downloadBatchResultResponse,omitempty"`
 	} `xml:"Body"`
 }
 
@@ -102,6 +108,10 @@ type getBatchResultsResponse struct {
 		Images []imageItemBatch `xml:"images"`
 	} `xml:"return"`
 }
+
+type downloadBatchResultResponse struct {
+	Return []byte `xml:"return"`
+}
 type uploadImagesResponse struct {
 	Return struct {
 		Status  string `xml:"status"`
@@ -121,6 +131,10 @@ type getBatchStatusWrapper struct {
 
 type getBatchResultsWrapper struct {
 	Request *getBatchResultsRequest `xml:"request"`
+}
+
+type downloadBatchResultWrapper struct {
+	Request *downloadBatchResultRequest `xml:"request"`
 }
 
 // Repository Methods
@@ -182,7 +196,7 @@ func (r *nodeSoapRepository) GetBatchStatus(ctx context.Context, token string, j
 
 func (r *nodeSoapRepository) GetBatchResults(ctx context.Context, token string, jobID string) (node.BatchResultsResponse, error) {
 	env := r.newEnvelope()
-	env.Body.GetBatchResults =&getBatchResultsWrapper{
+	env.Body.GetBatchResults = &getBatchResultsWrapper{
 		Request: &getBatchResultsRequest{JobID: jobID},
 	}
 	resp, err := r.doCall(ctx, token, env)
@@ -198,6 +212,26 @@ func (r *nodeSoapRepository) GetBatchResults(ctx context.Context, token string, 
 		images[i] = node.ImageItem{ID: img.ID, Name: img.Name, Base64: img.Base64}
 	}
 	return node.BatchResultsResponse{JobID: ret.JobID, Images: images}, nil
+}
+
+func (r *nodeSoapRepository) DownloadBatchResult(ctx context.Context, token string, jobID string) (node.BatchDownloadResponse, error) {
+	env := r.newEnvelope()
+	env.Body.DownloadBatchResult = &downloadBatchResultWrapper{
+		Request: &downloadBatchResultRequest{JobID: jobID},
+	}
+
+	resp, err := r.doCall(ctx, token, env)
+	if err != nil {
+		return node.BatchDownloadResponse{}, err
+	}
+	if resp.Body.DownloadBatchResultResponse == nil {
+		return node.BatchDownloadResponse{}, fmt.Errorf("missing downloadBatchResultResponse")
+	}
+
+	return node.BatchDownloadResponse{
+		JobID:   jobID,
+		Content: resp.Body.DownloadBatchResultResponse.Return,
+	}, nil
 }
 
 // Internal Helpers
