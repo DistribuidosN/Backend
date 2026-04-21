@@ -1,9 +1,8 @@
 package auth
 
-
 // UserCredentials represents the input for a login operation
 type UserCredentials struct {
-	Email string `json:"email"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
@@ -19,6 +18,11 @@ type RegisterRequest struct {
 	Password string `json:"password" xml:"password"`
 	Email    string `json:"email" xml:"email"`
 	RoleId   int    `json:"role_id" xml:"role_id"`
+}
+
+type RegisterResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }
 
 // ValidateResponse represents the detailed token validation result

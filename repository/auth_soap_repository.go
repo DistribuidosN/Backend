@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 type authSoapRepository struct {
@@ -87,6 +88,7 @@ func (r *authSoapRepository) call(ctx context.Context, token string, bodyFunc fu
 		Enf:     "http://auth.soap.model.server.enfok/",
 	}
 	bodyFunc(envelope)
+	action := authSOAPAction(envelope)
 
 	xmlData, err := xml.Marshal(envelope)
 	if err != nil {
@@ -107,8 +109,11 @@ func (r *authSoapRepository) call(ctx context.Context, token string, bodyFunc fu
 	}
 
 	client := &http.Client{}
+	start := time.Now()
+	log.Printf("[SOAP][auth] --> action=%s url=%s token=%t", action, r.url, token != "")
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[SOAP][auth] xx action=%s error=%v", action, err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -116,7 +121,7 @@ func (r *authSoapRepository) call(ctx context.Context, token string, bodyFunc fu
 	if resp.StatusCode != http.StatusOK {
 		respData, _ := io.ReadAll(resp.Body)
 		// Imprime el error para debug
-		log.Printf("SOAP Error %d: %s", resp.StatusCode, string(respData))
+		log.Printf("[SOAP][auth] <-- action=%s status=%d duration=%s body=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond), string(respData))
 		return nil, fmt.Errorf("soap server error: %d", resp.StatusCode)
 	}
 
@@ -129,8 +134,28 @@ func (r *authSoapRepository) call(ctx context.Context, token string, bodyFunc fu
 	if err := xml.Unmarshal(respData, &soapResp); err != nil {
 		return nil, fmt.Errorf("error unmarshaling soap: %w", err)
 	}
+	log.Printf("[SOAP][auth] <-- action=%s status=%d duration=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 
 	return &soapResp, nil
+}
+
+func authSOAPAction(envelope *soapEnvelope) string {
+	switch {
+	case envelope.Body.LogIn != nil:
+		return "login"
+	case envelope.Body.Register != nil:
+		return "register"
+	case envelope.Body.LogOut != nil:
+		return "logout"
+	case envelope.Body.ValidateToken != nil:
+		return "validateToken"
+	case envelope.Body.ForgetPwd != nil:
+		return "forgetPwd"
+	case envelope.Body.ResetPassword != nil:
+		return "resetPassword"
+	default:
+		return "unknown"
+	}
 }
 
 func (r *authSoapRepository) LogIn(ctx context.Context, creds auth.UserCredentials) (auth.AuthResponse, error) {

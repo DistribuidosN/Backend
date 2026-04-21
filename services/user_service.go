@@ -30,7 +30,7 @@ func (s *userService) GetActivity(ctx context.Context, token string) ([]user.Use
 	return s.repo.GetActivity(ctx, token)
 }
 
-func (s *userService) SearchUser(ctx context.Context, token string, uid string) (user.UserSearchResponse, error) {
+func (s *userService) SearchUser(ctx context.Context, token string, uid string) (user.UserProfile, error) {
 	return s.repo.SearchUser(ctx, token, uid)
 }
 

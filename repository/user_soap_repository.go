@@ -8,7 +8,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"time"
 )
 
 type userSoapRepository struct {
@@ -48,18 +50,23 @@ type userSoapResponse struct {
 	XMLName xml.Name `xml:"Envelope"`
 	Body    struct {
 		ProfileResponse           *profileResponse           `xml:"profileResponse,omitempty"`
-		UpdateProfileResponse     *struct{}                 `xml:"updateProfileResponse,omitempty"`
+		UpdateProfileResponse     *struct{}                  `xml:"updateProfileResponse,omitempty"`
 		GetUserActivityResponse   *getUserActivityResponse   `xml:"getUserActivityResponse,omitempty"`
 		SearchUserResponse        *searchUserResponse        `xml:"searchUserResponse,omitempty"`
-		DeleteAccountResponse     *struct{}                 `xml:"deleteAccountResponse,omitempty"`
+		DeleteAccountResponse     *struct{}                  `xml:"deleteAccountResponse,omitempty"`
 		GetUserStatisticsResponse *getUserStatisticsResponse `xml:"getUserStatisticsResponse,omitempty"`
 	} `xml:"Body"`
 }
 
 type profileResponse struct {
 	Return struct {
-		Username string `xml:"username"`
-		Status   int    `xml:"status"`
+		ID        int    `xml:"id"`
+		UserUUID  string `xml:"userUuid"`
+		Username  string `xml:"username"`
+		Email     string `xml:"email"`
+		RoleID    int    `xml:"roleId"`
+		Status    int    `xml:"status"`
+		CreatedAt string `xml:"createdAt"`
 	} `xml:"return"`
 }
 
@@ -73,8 +80,13 @@ type getUserActivityResponse struct {
 
 type searchUserResponse struct {
 	Return struct {
-		UID      string `xml:"uid"`
-		Username string `xml:"username"`
+		ID        int    `xml:"id"`
+		UserUUID  string `xml:"userUuid"`
+		Username  string `xml:"username"`
+		Email     string `xml:"email"`
+		RoleID    int    `xml:"roleId"`
+		Status    int    `xml:"status"`
+		CreatedAt string `xml:"createdAt"`
 	} `xml:"return"`
 }
 
@@ -91,6 +103,7 @@ func (r *userSoapRepository) call(ctx context.Context, token string, bodyFunc fu
 		Enf:     "http://user.soap.model.server.enfok/",
 	}
 	bodyFunc(envelope)
+	action := userSOAPAction(envelope)
 
 	xmlData, err := xml.Marshal(envelope)
 	if err != nil {
@@ -106,13 +119,18 @@ func (r *userSoapRepository) call(ctx context.Context, token string, bodyFunc fu
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := &http.Client{}
+	start := time.Now()
+	log.Printf("[SOAP][user] --> action=%s url=%s", action, r.url)
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[SOAP][user] xx action=%s error=%v", action, err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[SOAP][user] <-- action=%s status=%d duration=%s body=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond), string(body))
 		return nil, fmt.Errorf("soap error: %d", resp.StatusCode)
 	}
 
@@ -125,8 +143,28 @@ func (r *userSoapRepository) call(ctx context.Context, token string, bodyFunc fu
 	if err := xml.Unmarshal(respData, &soapResp); err != nil {
 		return nil, err
 	}
+	log.Printf("[SOAP][user] <-- action=%s status=%d duration=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 
 	return &soapResp, nil
+}
+
+func userSOAPAction(envelope *userSoapEnvelope) string {
+	switch {
+	case envelope.Body.Profile != nil:
+		return "profile"
+	case envelope.Body.UpdateProfile != nil:
+		return "updateProfile"
+	case envelope.Body.GetUserActivity != nil:
+		return "getUserActivity"
+	case envelope.Body.SearchUser != nil:
+		return "searchUser"
+	case envelope.Body.DeleteAccount != nil:
+		return "deleteAccount"
+	case envelope.Body.GetUserStatistics != nil:
+		return "getUserStatistics"
+	default:
+		return "unknown"
+	}
 }
 
 func (r *userSoapRepository) GetProfile(ctx context.Context, token string) (user.UserProfile, error) {
@@ -134,7 +172,15 @@ func (r *userSoapRepository) GetProfile(ctx context.Context, token string) (user
 	if err != nil {
 		return user.UserProfile{}, err
 	}
-	return user.UserProfile{Username: resp.Body.ProfileResponse.Return.Username, Status: resp.Body.ProfileResponse.Return.Status}, nil
+	return user.UserProfile{
+		ID:        resp.Body.ProfileResponse.Return.ID,
+		UserUUID:  resp.Body.ProfileResponse.Return.UserUUID,
+		Username:  resp.Body.ProfileResponse.Return.Username,
+		Email:     resp.Body.ProfileResponse.Return.Email,
+		RoleID:    resp.Body.ProfileResponse.Return.RoleID,
+		Status:    resp.Body.ProfileResponse.Return.Status,
+		CreatedAt: resp.Body.ProfileResponse.Return.CreatedAt,
+	}, nil
 }
 
 func (r *userSoapRepository) UpdateProfile(ctx context.Context, token string, data user.UserProfile) error {
@@ -159,12 +205,20 @@ func (r *userSoapRepository) GetActivity(ctx context.Context, token string) ([]u
 	return activities, nil
 }
 
-func (r *userSoapRepository) SearchUser(ctx context.Context, token string, uid string) (user.UserSearchResponse, error) {
+func (r *userSoapRepository) SearchUser(ctx context.Context, token string, uid string) (user.UserProfile, error) {
 	resp, err := r.call(ctx, token, func(e *userSoapEnvelope) { e.Body.SearchUser = &searchUserRequest{UID: uid} })
 	if err != nil {
-		return user.UserSearchResponse{}, err
+		return user.UserProfile{}, err
 	}
-	return user.UserSearchResponse{UID: resp.Body.SearchUserResponse.Return.UID, Username: resp.Body.SearchUserResponse.Return.Username}, nil
+	return user.UserProfile{
+		ID:        resp.Body.SearchUserResponse.Return.ID,
+		UserUUID:  resp.Body.SearchUserResponse.Return.UserUUID,
+		Username:  resp.Body.SearchUserResponse.Return.Username,
+		Email:     resp.Body.SearchUserResponse.Return.Email,
+		RoleID:    resp.Body.SearchUserResponse.Return.RoleID,
+		Status:    resp.Body.SearchUserResponse.Return.Status,
+		CreatedAt: resp.Body.SearchUserResponse.Return.CreatedAt,
+	}, nil
 }
 
 func (r *userSoapRepository) DeleteAccount(ctx context.Context, token string) error {

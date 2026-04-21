@@ -43,7 +43,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "user registered successfully"})
+	c.JSON(http.StatusCreated, auth.RegisterResponse{
+		Status:  "success",
+		Message: "user registered successfully",
+	})
 }
 
 func (h *AuthHandler) LogOut(c *gin.Context) {
@@ -73,6 +76,10 @@ func (h *AuthHandler) ValidateToken(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) ValidateTokenPOST(c *gin.Context) {
+	h.ValidateToken(c)
 }
 
 func (h *AuthHandler) ForgetPwd(c *gin.Context) {

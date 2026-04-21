@@ -2,8 +2,13 @@ package user
 
 // UserProfile represents user profile data
 type UserProfile struct {
-	Username string `json:"username"`
-	Status   int    `json:"status"`
+	ID        int    `json:"id"`
+	UserUUID  string `json:"user_uuid,omitempty"`
+	Username  string `json:"username"`
+	Email     string `json:"email,omitempty"`
+	RoleID    int    `json:"role_id"`
+	Status    int    `json:"status"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 // UserActivity represents a single user activity record
@@ -19,8 +24,9 @@ type UserStats struct {
 	TotalLogins    int `json:"totalLogins"`
 }
 
-// UserSearchResponse represents the result of a user search
-type UserSearchResponse struct {
-	UID      string `json:"uid"`
+// UserUpdateResponse matches the contract consumed by ServerApp.
+type UserUpdateResponse struct {
+	Message  string `json:"message"`
 	Username string `json:"username"`
+	Valid    bool   `json:"valid"`
 }

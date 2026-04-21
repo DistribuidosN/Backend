@@ -28,7 +28,10 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, profile)
+	c.JSON(http.StatusOK, gin.H{
+		"username": profile.Username,
+		"status":   profile.Status,
+	})
 }
 
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
@@ -43,7 +46,11 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "profile updated successfully"})
+	c.JSON(http.StatusOK, user.UserUpdateResponse{
+		Message:  "profile updated successfully",
+		Username: data.Username,
+		Valid:    true,
+	})
 }
 
 func (h *UserHandler) GetActivity(c *gin.Context) {
@@ -60,7 +67,10 @@ func (h *UserHandler) SearchUser(c *gin.Context) {
 	token := extractToken(c)
 	uid := c.Query("uid")
 	if uid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "uid parameter required"})
+		uid = c.Query("username")
+	}
+	if uid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "uid or username parameter required"})
 		return
 	}
 

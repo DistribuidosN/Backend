@@ -21,3 +21,7 @@ func NewNodeService(repo adapters.NodeRepository) ports.NodeService {
 func (s *nodeService) UploadImages(ctx context.Context, token string, req node.ImageUploadRequest) (node.UploadResponse, error) {
 	return s.repo.UploadImages(ctx, token, req)
 }
+
+func (s *nodeService) UploadBatch(ctx context.Context, token string, req node.BatchUploadRequest) (node.BatchUploadResponse, error) {
+	return s.repo.UploadBatch(ctx, token, req)
+}
