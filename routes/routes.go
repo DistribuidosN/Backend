@@ -5,13 +5,34 @@ import (
 	"Backend/handlers"
 	"Backend/repository"
 	"Backend/services"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func SetupRoutes(cfg config.Config) *gin.Engine {
 	r := gin.Default()
+	r.Use(
+		cors.New(
+			cors.Config{
+				AllowOrigins: []string{
+					"http://localhost:3000",
+					"http://127.0.0.1:3000",
+					"http://localhost:8080",
+					"http://127.0.0.1:8080",
+					"http://localhost:9100",
+					"http://127.0.0.1:9100",
+				},
+				AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+				AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+				ExposeHeaders:    []string{"Content-Length", "Content-Disposition"},
+				AllowCredentials: true,
+				MaxAge:           12 * time.Hour,
+			},
+		),
+	)
 	r.Use(handlers.RequestTrace())
 
 	authSoapURL := joinURL(cfg.ServerAppSOAPBase, "auth")
