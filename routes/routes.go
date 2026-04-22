@@ -17,14 +17,7 @@ func SetupRoutes(cfg config.Config) *gin.Engine {
 	r.Use(
 		cors.New(
 			cors.Config{
-				AllowOrigins: []string{
-					"http://localhost:3000",
-					"http://127.0.0.1:3000",
-					"http://localhost:8080",
-					"http://127.0.0.1:8080",
-					"http://localhost:9100",
-					"http://127.0.0.1:9100",
-				},
+				AllowOriginFunc:  isAllowedOrigin,
 				AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 				AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 				ExposeHeaders:    []string{"Content-Length", "Content-Disposition"},
@@ -34,6 +27,9 @@ func SetupRoutes(cfg config.Config) *gin.Engine {
 		),
 	)
 	r.Use(handlers.RequestTrace())
+	r.OPTIONS("/*path", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
 
 	authSoapURL := joinURL(cfg.ServerAppSOAPBase, "auth")
 	userSoapURL := joinURL(cfg.ServerAppSOAPBase, "user")
@@ -71,6 +67,24 @@ func SetupRoutes(cfg config.Config) *gin.Engine {
 
 func joinURL(base, path string) string {
 	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(path, "/")
+}
+
+func isAllowedOrigin(origin string) bool {
+	if origin == "" {
+		return true
+	}
+
+	switch {
+	case strings.HasPrefix(origin, "http://localhost:"),
+		strings.HasPrefix(origin, "https://localhost:"),
+		strings.HasPrefix(origin, "http://127.0.0.1:"),
+		strings.HasPrefix(origin, "https://127.0.0.1:"),
+		strings.HasPrefix(origin, "http://10.134.240."),
+		strings.HasPrefix(origin, "https://10.134.240."):
+		return true
+	default:
+		return false
+	}
 }
 
 func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandler, userHandler *handlers.UserHandler, nodeHandler *handlers.NodeHandler) {
