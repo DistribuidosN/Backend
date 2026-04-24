@@ -15,10 +15,12 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"log"
 )
 
 // MapFilesToImageItems handles the in-memory extraction of images from multipart files and archives in parallel.
 func MapFilesToImageItems(files []*multipart.FileHeader) ([]node.ImageItem, error) {
+	log.Printf("[DEBUG] Iniciando mapeo de %d archivos", len(files))
 	var wg sync.WaitGroup
 	resultChan := make(chan []node.ImageItem, len(files))
 	errChan := make(chan error, len(files))
@@ -27,8 +29,10 @@ func MapFilesToImageItems(files []*multipart.FileHeader) ([]node.ImageItem, erro
 		wg.Add(1)
 		go func(fh *multipart.FileHeader) {
 			defer wg.Done()
+			log.Printf("[DEBUG] Procesando archivo multipart: %s (tamaño: %d)", fh.Filename, fh.Size)
 			images, err := extractImagesFromHeader(fh)
 			if err != nil {
+				log.Printf("[ERROR] Fallo al extraer imágenes de %s: %v", fh.Filename, err)
 				errChan <- err
 				return
 			}
@@ -43,16 +47,19 @@ func MapFilesToImageItems(files []*multipart.FileHeader) ([]node.ImageItem, erro
 		close(errChan)
 	}()
 
+	// Check for errors first
+	for err := range errChan {
+		if err != nil {
+			return nil, err // Retornamos el primer error encontrado
+		}
+	}
+
 	var allImages []node.ImageItem
 	for images := range resultChan {
 		allImages = append(allImages, images...)
 	}
 
-	// For simplicity, we log errors and continue, or we could check errChan.
-	for err := range errChan {
-		fmt.Printf("Extraction error: %v\n", err)
-	}
-
+	log.Printf("[DEBUG] Mapeo completado. Total imágenes extraídas: %d", len(allImages))
 	return allImages, nil
 }
 
@@ -84,15 +91,16 @@ func extractImagesFromHeader(fileHeader *multipart.FileHeader) ([]node.ImageItem
 }
 
 func processZip(r io.Reader, size int64) ([]node.ImageItem, error) {
+	log.Printf("[DEBUG] Abriendo archivo ZIP")
 	buf := new(bytes.Buffer)
 	if _, err := io.Copy(buf, r); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error al leer stream ZIP: %w", err)
 	}
 	readerAt := bytes.NewReader(buf.Bytes())
 
 	zipReader, err := zip.NewReader(readerAt, int64(buf.Len()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error al crear lector ZIP: %w", err)
 	}
 
 	var images []node.ImageItem
@@ -101,22 +109,27 @@ func processZip(r io.Reader, size int64) ([]node.ImageItem, error) {
 			continue
 		}
 
-		if isImageExtension(filepath.Ext(f.Name)) {
+		ext := filepath.Ext(f.Name)
+		if isImageExtension(ext) {
+			log.Printf("[DEBUG] Extrayendo imagen de ZIP: %s", f.Name)
 			rc, err := f.Open()
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("error al abrir archivo interno %s: %w", f.Name, err)
 			}
+			
 			img, err := toImageItem(rc, f.Name)
-			rc.Close()
-			if err == nil {
-				images = append(images, img)
+			rc.Close() // Cerramos inmediatamente después de leer a memoria
+			if err != nil {
+				return nil, fmt.Errorf("error al procesar imagen %s: %w", f.Name, err)
 			}
+			images = append(images, img)
 		}
 	}
 	return images, nil
 }
 
 func processTar(r io.Reader) ([]node.ImageItem, error) {
+	log.Printf("[DEBUG] Iniciando lectura de stream TAR")
 	tarReader := tar.NewReader(r)
 	var images []node.ImageItem
 
@@ -126,14 +139,16 @@ func processTar(r io.Reader) ([]node.ImageItem, error) {
 			break
 		}
 		if err != nil {
-			return images, err
+			return nil, fmt.Errorf("error al leer siguiente entrada TAR: %w", err)
 		}
 
 		if header.Typeflag == tar.TypeReg && !isIgnoredFile(header.Name) && isImageExtension(filepath.Ext(header.Name)) {
+			log.Printf("[DEBUG] Extrayendo imagen de TAR: %s", header.Name)
 			img, err := toImageItem(tarReader, header.Name)
-			if err == nil {
-				images = append(images, img)
+			if err != nil {
+				return nil, fmt.Errorf("error al procesar entrada TAR %s: %w", header.Name, err)
 			}
+			images = append(images, img)
 		}
 	}
 	return images, nil
@@ -162,12 +177,21 @@ func processSingleImage(r io.Reader, name string) ([]node.ImageItem, error) {
 
 func toImageItem(r io.Reader, name string) (node.ImageItem, error) {
 	buf := new(bytes.Buffer)
-	if _, err := io.Copy(buf, r); err != nil {
-		return node.ImageItem{}, err
+	// io.Copy leerá desde la posición actual del reader hasta el final del archivo/entrada
+	written, err := io.Copy(buf, r)
+	if err != nil {
+		return node.ImageItem{}, fmt.Errorf("error al copiar bytes de %s: %w", name, err)
 	}
 
+	if written == 0 {
+		return node.ImageItem{}, fmt.Errorf("archivo %s está vacío", name)
+	}
+
+	imageID := uuid.NewString()
+	log.Printf("[DEBUG] Generando ImageItem: %s, UUID: %s, Bytes: %d", name, imageID, written)
+
 	return node.ImageItem{
-		ID:     uuid.NewString(), // Unique ID for each image
+		ID:     imageID,
 		Name:   filepath.Base(name),
 		Base64: base64.StdEncoding.EncodeToString(buf.Bytes()),
 	}, nil

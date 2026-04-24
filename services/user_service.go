@@ -38,6 +38,6 @@ func (s *userService) DeleteAccount(ctx context.Context, token string) error {
 	return s.repo.DeleteAccount(ctx, token)
 }
 
-func (s *userService) GetStatistics(ctx context.Context, token string) (user.UserStats, error) {
+func (s *userService) GetStatistics(ctx context.Context, token string) (user.UserStatistics, error) {
 	return s.repo.GetStatistics(ctx, token)
 }

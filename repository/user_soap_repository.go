@@ -1,37 +1,39 @@
 package repository
 
 import (
+	"Backend/infrastructure/soap"
 	"Backend/models/interfaces/adapters"
 	"Backend/models/user"
-	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
 	"time"
 )
 
 type userSoapRepository struct {
-	url string
+	client *soap.Client
+	url    string
 }
 
-func NewUserSoapRepository(url string) adapters.UserRepository {
-	return &userSoapRepository{url: url}
+func NewUserSoapRepository(client *soap.Client, url string) adapters.UserRepository {
+	return &userSoapRepository{
+		client: client,
+		url:    url,
+	}
 }
 
+// SOAP Structures
 type userSoapEnvelope struct {
 	XMLName xml.Name `xml:"soapenv:Envelope"`
 	Soapenv string   `xml:"xmlns:soapenv,attr"`
-	Enf     string   `xml:"xmlns:enf,attr"`
+	UserNS  string   `xml:"xmlns:user,attr"`
 	Body    struct {
-		Profile           *struct{}             `xml:"enf:profile,omitempty"`
-		UpdateProfile     *updateProfileRequest `xml:"enf:updateProfile,omitempty"`
-		GetUserActivity   *struct{}             `xml:"enf:getUserActivity,omitempty"`
-		SearchUser        *searchUserRequest    `xml:"enf:searchUser,omitempty"`
-		DeleteAccount     *struct{}             `xml:"enf:deleteAccount,omitempty"`
-		GetUserStatistics *struct{}             `xml:"enf:getUserStatistics,omitempty"`
+		Profile           *struct{}             `xml:"user:profile,omitempty"`
+		UpdateProfile     *updateProfileRequest `xml:"user:updateProfile,omitempty"`
+		GetUserActivity   *struct{}             `xml:"user:getUserActivity,omitempty"`
+		SearchUser        *searchUserRequest    `xml:"user:searchUser,omitempty"`
+		DeleteAccount     *struct{}             `xml:"user:deleteAccount,omitempty"`
+		GetUserStatistics *struct{}             `xml:"user:getUserStatistics,omitempty"`
 	} `xml:"soapenv:Body"`
 }
 
@@ -46,14 +48,13 @@ type searchUserRequest struct {
 	UID string `xml:"uid"`
 }
 
+// Response Structures
 type userSoapResponse struct {
 	XMLName xml.Name `xml:"Envelope"`
 	Body    struct {
 		ProfileResponse           *profileResponse           `xml:"profileResponse,omitempty"`
-		UpdateProfileResponse     *struct{}                  `xml:"updateProfileResponse,omitempty"`
 		GetUserActivityResponse   *getUserActivityResponse   `xml:"getUserActivityResponse,omitempty"`
 		SearchUserResponse        *searchUserResponse        `xml:"searchUserResponse,omitempty"`
-		DeleteAccountResponse     *struct{}                  `xml:"deleteAccountResponse,omitempty"`
 		GetUserStatisticsResponse *getUserStatisticsResponse `xml:"getUserStatisticsResponse,omitempty"`
 	} `xml:"Body"`
 }
@@ -72,9 +73,10 @@ type profileResponse struct {
 
 type getUserActivityResponse struct {
 	Return []struct {
-		ID        string `xml:"id"`
-		Action    string `xml:"action"`
-		Timestamp string `xml:"timestamp"`
+		BatchID     string    `xml:"batchId"`
+		RequestTime time.Time `xml:"requestTime"`
+		Status      string    `xml:"status"`
+		ImageCount  int       `xml:"imageCount"`
 	} `xml:"return"`
 }
 
@@ -92,144 +94,171 @@ type searchUserResponse struct {
 
 type getUserStatisticsResponse struct {
 	Return struct {
-		ImagesUploaded int `xml:"imagesUploaded"`
-		TotalLogins    int `xml:"totalLogins"`
+		TotalBatches    int `xml:"totalBatches"`
+		TotalImages     int `xml:"totalImages"`
+		ImagesCompleted int `xml:"imagesCompleted"`
+		ImagesFailed    int `xml:"imagesFailed"`
 	} `xml:"return"`
 }
 
-func (r *userSoapRepository) call(ctx context.Context, token string, bodyFunc func(*userSoapEnvelope)) (*userSoapResponse, error) {
-	envelope := &userSoapEnvelope{
+func (r *userSoapRepository) GetProfile(ctx context.Context, token string) (user.UserProfile, error) {
+	env := userSoapEnvelope{
 		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
-		Enf:     "http://user.soap.model.server.enfok/",
+		UserNS:  "http://user.soap.model.server.enfok/",
 	}
-	bodyFunc(envelope)
-	action := userSOAPAction(envelope)
+	env.Body.Profile = &struct{}{}
 
-	xmlData, err := xml.Marshal(envelope)
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
 	if err != nil {
-		return nil, err
+		return user.UserProfile{}, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", r.url, bytes.NewBuffer(xmlData))
-	if err != nil {
-		return nil, err
+	var soapResp userSoapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return user.UserProfile{}, err
 	}
 
-	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	client := &http.Client{}
-	start := time.Now()
-	log.Printf("[SOAP][user] --> action=%s url=%s", action, r.url)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("[SOAP][user] xx action=%s error=%v", action, err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[SOAP][user] <-- action=%s status=%d duration=%s body=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond), string(body))
-		return nil, fmt.Errorf("soap error: %d", resp.StatusCode)
+	if soapResp.Body.ProfileResponse == nil {
+		return user.UserProfile{}, fmt.Errorf("empty profile response")
 	}
 
-	respData, err := io.ReadAll(resp.Body)
+	ret := soapResp.Body.ProfileResponse.Return
+	return user.UserProfile{
+		ID:        ret.ID,
+		UserUUID:  ret.UserUUID,
+		Username:  ret.Username,
+		Email:     ret.Email,
+		RoleID:    ret.RoleID,
+		Status:    ret.Status,
+		CreatedAt: ret.CreatedAt,
+	}, nil
+}
+
+func (r *userSoapRepository) UpdateProfile(ctx context.Context, token string, data user.UserProfile) error {
+	env := userSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		UserNS:  "http://user.soap.model.server.enfok/",
+	}
+	env.Body.UpdateProfile = &updateProfileRequest{
+		UserData: struct {
+			Username string `xml:"username"`
+			Status   int    `xml:"status"`
+		}{Username: data.Username, Status: data.Status},
+	}
+
+	xmlData, _ := xml.Marshal(env)
+	_, err := r.client.Call(r.url, xmlData, token)
+	return err
+}
+
+func (r *userSoapRepository) GetActivity(ctx context.Context, token string) ([]user.UserActivity, error) {
+	env := userSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		UserNS:  "http://user.soap.model.server.enfok/",
+	}
+	env.Body.GetUserActivity = &struct{}{}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
 	if err != nil {
 		return nil, err
 	}
 
 	var soapResp userSoapResponse
-	if err := xml.Unmarshal(respData, &soapResp); err != nil {
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
 		return nil, err
 	}
-	log.Printf("[SOAP][user] <-- action=%s status=%d duration=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 
-	return &soapResp, nil
-}
-
-func userSOAPAction(envelope *userSoapEnvelope) string {
-	switch {
-	case envelope.Body.Profile != nil:
-		return "profile"
-	case envelope.Body.UpdateProfile != nil:
-		return "updateProfile"
-	case envelope.Body.GetUserActivity != nil:
-		return "getUserActivity"
-	case envelope.Body.SearchUser != nil:
-		return "searchUser"
-	case envelope.Body.DeleteAccount != nil:
-		return "deleteAccount"
-	case envelope.Body.GetUserStatistics != nil:
-		return "getUserStatistics"
-	default:
-		return "unknown"
+	if soapResp.Body.GetUserActivityResponse == nil {
+		return nil, fmt.Errorf("empty activity response")
 	}
-}
 
-func (r *userSoapRepository) GetProfile(ctx context.Context, token string) (user.UserProfile, error) {
-	resp, err := r.call(ctx, token, func(e *userSoapEnvelope) { e.Body.Profile = &struct{}{} })
-	if err != nil {
-		return user.UserProfile{}, err
-	}
-	return user.UserProfile{
-		ID:        resp.Body.ProfileResponse.Return.ID,
-		UserUUID:  resp.Body.ProfileResponse.Return.UserUUID,
-		Username:  resp.Body.ProfileResponse.Return.Username,
-		Email:     resp.Body.ProfileResponse.Return.Email,
-		RoleID:    resp.Body.ProfileResponse.Return.RoleID,
-		Status:    resp.Body.ProfileResponse.Return.Status,
-		CreatedAt: resp.Body.ProfileResponse.Return.CreatedAt,
-	}, nil
-}
-
-func (r *userSoapRepository) UpdateProfile(ctx context.Context, token string, data user.UserProfile) error {
-	_, err := r.call(ctx, token, func(e *userSoapEnvelope) {
-		e.Body.UpdateProfile = &updateProfileRequest{UserData: struct {
-			Username string `xml:"username"`
-			Status   int    `xml:"status"`
-		}{Username: data.Username, Status: data.Status}}
-	})
-	return err
-}
-
-func (r *userSoapRepository) GetActivity(ctx context.Context, token string) ([]user.UserActivity, error) {
-	resp, err := r.call(ctx, token, func(e *userSoapEnvelope) { e.Body.GetUserActivity = &struct{}{} })
-	if err != nil {
-		return nil, err
-	}
-	activities := make([]user.UserActivity, len(resp.Body.GetUserActivityResponse.Return))
-	for i, a := range resp.Body.GetUserActivityResponse.Return {
-		activities[i] = user.UserActivity{ID: a.ID, Action: a.Action, Timestamp: a.Timestamp}
+	var activities []user.UserActivity
+	for _, a := range soapResp.Body.GetUserActivityResponse.Return {
+		activities = append(activities, user.UserActivity{
+			BatchID:     a.BatchID,
+			RequestTime: a.RequestTime,
+			Status:      a.Status,
+			ImageCount:  a.ImageCount,
+		})
 	}
 	return activities, nil
 }
 
 func (r *userSoapRepository) SearchUser(ctx context.Context, token string, uid string) (user.UserProfile, error) {
-	resp, err := r.call(ctx, token, func(e *userSoapEnvelope) { e.Body.SearchUser = &searchUserRequest{UID: uid} })
+	env := userSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		UserNS:  "http://user.soap.model.server.enfok/",
+	}
+	env.Body.SearchUser = &searchUserRequest{UID: uid}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
 	if err != nil {
 		return user.UserProfile{}, err
 	}
+
+	var soapResp userSoapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return user.UserProfile{}, err
+	}
+
+	if soapResp.Body.SearchUserResponse == nil {
+		return user.UserProfile{}, fmt.Errorf("user not found")
+	}
+
+	ret := soapResp.Body.SearchUserResponse.Return
 	return user.UserProfile{
-		ID:        resp.Body.SearchUserResponse.Return.ID,
-		UserUUID:  resp.Body.SearchUserResponse.Return.UserUUID,
-		Username:  resp.Body.SearchUserResponse.Return.Username,
-		Email:     resp.Body.SearchUserResponse.Return.Email,
-		RoleID:    resp.Body.SearchUserResponse.Return.RoleID,
-		Status:    resp.Body.SearchUserResponse.Return.Status,
-		CreatedAt: resp.Body.SearchUserResponse.Return.CreatedAt,
+		ID:        ret.ID,
+		UserUUID:  ret.UserUUID,
+		Username:  ret.Username,
+		Email:     ret.Email,
+		RoleID:    ret.RoleID,
+		Status:    ret.Status,
+		CreatedAt: ret.CreatedAt,
 	}, nil
 }
 
 func (r *userSoapRepository) DeleteAccount(ctx context.Context, token string) error {
-	_, err := r.call(ctx, token, func(e *userSoapEnvelope) { e.Body.DeleteAccount = &struct{}{} })
+	env := userSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		UserNS:  "http://user.soap.model.server.enfok/",
+	}
+	env.Body.DeleteAccount = &struct{}{}
+
+	xmlData, _ := xml.Marshal(env)
+	_, err := r.client.Call(r.url, xmlData, token)
 	return err
 }
 
-func (r *userSoapRepository) GetStatistics(ctx context.Context, token string) (user.UserStats, error) {
-	resp, err := r.call(ctx, token, func(e *userSoapEnvelope) { e.Body.GetUserStatistics = &struct{}{} })
-	if err != nil {
-		return user.UserStats{}, err
+func (r *userSoapRepository) GetStatistics(ctx context.Context, token string) (user.UserStatistics, error) {
+	env := userSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		UserNS:  "http://user.soap.model.server.enfok/",
 	}
-	return user.UserStats{ImagesUploaded: resp.Body.GetUserStatisticsResponse.Return.ImagesUploaded, TotalLogins: resp.Body.GetUserStatisticsResponse.Return.TotalLogins}, nil
+	env.Body.GetUserStatistics = &struct{}{}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
+	if err != nil {
+		return user.UserStatistics{}, err
+	}
+
+	var soapResp userSoapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return user.UserStatistics{}, err
+	}
+
+	if soapResp.Body.GetUserStatisticsResponse == nil {
+		return user.UserStatistics{}, fmt.Errorf("empty statistics response")
+	}
+
+	ret := soapResp.Body.GetUserStatisticsResponse.Return
+	return user.UserStatistics{
+		TotalBatches:    ret.TotalBatches,
+		TotalImages:     ret.TotalImages,
+		ImagesCompleted: ret.ImagesCompleted,
+		ImagesFailed:    ret.ImagesFailed,
+	}, nil
 }

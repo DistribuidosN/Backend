@@ -1,24 +1,24 @@
 package repository
 
 import (
+	"Backend/infrastructure/soap"
 	"Backend/models/auth"
 	"Backend/models/interfaces/adapters"
-	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"time"
 )
 
 type authSoapRepository struct {
-	url string
+	client *soap.Client
+	url    string
 }
 
-func NewAuthSoapRepository(url string) adapters.AuthRepository {
-	return &authSoapRepository{url: url}
+func NewAuthSoapRepository(client *soap.Client, url string) adapters.AuthRepository {
+	return &authSoapRepository{
+		client: client,
+		url:    url,
+	}
 }
 
 // SOAP Structures
@@ -26,7 +26,6 @@ type soapEnvelope struct {
 	XMLName xml.Name `xml:"soapenv:Envelope"`
 	Soapenv string   `xml:"xmlns:soapenv,attr"`
 	Enf     string   `xml:"xmlns:enf,attr"`
-	Header  struct{} `xml:"soapenv:Header"`
 	Body    struct {
 		LogIn         *logInRequest         `xml:"enf:logIn,omitempty"`
 		Register      *registerRequest      `xml:"enf:register,omitempty"`
@@ -74,7 +73,7 @@ type soapResponse struct {
 type logInResponse struct {
 	Return struct {
 		Token  string `xml:"token"`
-		RoleId int    `xml:"roleId"` // Java uses CamelCase por defecto en SOAP
+		RoleId int    `xml:"roleId"`
 	} `xml:"return"`
 }
 
@@ -82,139 +81,109 @@ type validateTokenResponse struct {
 	Return auth.ValidateResponse `xml:"return"`
 }
 
-func (r *authSoapRepository) call(ctx context.Context, token string, bodyFunc func(*soapEnvelope)) (*soapResponse, error) {
-	envelope := &soapEnvelope{
+func (r *authSoapRepository) LogIn(ctx context.Context, creds auth.UserCredentials) (auth.AuthResponse, error) {
+	env := soapEnvelope{
 		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
 		Enf:     "http://auth.soap.model.server.enfok/",
 	}
-	bodyFunc(envelope)
-	action := authSOAPAction(envelope)
+	env.Body.LogIn = &logInRequest{Email: creds.Email, Password: creds.Password}
 
-	xmlData, err := xml.Marshal(envelope)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", r.url, bytes.NewBuffer(xmlData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
-	// Importante: Algunos servidores JAX-WS requieren el header SOAPAction
-	req.Header.Set("SOAPAction", "")
-
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	client := &http.Client{}
-	start := time.Now()
-	log.Printf("[SOAP][auth] --> action=%s url=%s token=%t", action, r.url, token != "")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("[SOAP][auth] xx action=%s error=%v", action, err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respData, _ := io.ReadAll(resp.Body)
-		// Imprime el error para debug
-		log.Printf("[SOAP][auth] <-- action=%s status=%d duration=%s body=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond), string(respData))
-		return nil, fmt.Errorf("soap server error: %d", resp.StatusCode)
-	}
-
-	respData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var soapResp soapResponse
-	if err := xml.Unmarshal(respData, &soapResp); err != nil {
-		return nil, fmt.Errorf("error unmarshaling soap: %w", err)
-	}
-	log.Printf("[SOAP][auth] <-- action=%s status=%d duration=%s", action, resp.StatusCode, time.Since(start).Round(time.Millisecond))
-
-	return &soapResp, nil
-}
-
-func authSOAPAction(envelope *soapEnvelope) string {
-	switch {
-	case envelope.Body.LogIn != nil:
-		return "login"
-	case envelope.Body.Register != nil:
-		return "register"
-	case envelope.Body.LogOut != nil:
-		return "logout"
-	case envelope.Body.ValidateToken != nil:
-		return "validateToken"
-	case envelope.Body.ForgetPwd != nil:
-		return "forgetPwd"
-	case envelope.Body.ResetPassword != nil:
-		return "resetPassword"
-	default:
-		return "unknown"
-	}
-}
-
-func (r *authSoapRepository) LogIn(ctx context.Context, creds auth.UserCredentials) (auth.AuthResponse, error) {
-	resp, err := r.call(ctx, "", func(e *soapEnvelope) {
-		e.Body.LogIn = &logInRequest{Email: creds.Email, Password: creds.Password}
-	})
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, "")
 	if err != nil {
 		return auth.AuthResponse{}, err
 	}
+
+	var soapResp soapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return auth.AuthResponse{}, err
+	}
+
+	if soapResp.Body.LogInResponse == nil {
+		return auth.AuthResponse{}, fmt.Errorf("login failed")
+	}
+
+	ret := soapResp.Body.LogInResponse.Return
 	return auth.AuthResponse{
-		Token:  resp.Body.LogInResponse.Return.Token,
-		RoleId: resp.Body.LogInResponse.Return.RoleId,
+		Token:  ret.Token,
+		RoleId: ret.RoleId,
 	}, nil
 }
 
 func (r *authSoapRepository) Register(ctx context.Context, req auth.RegisterRequest) error {
-	_, err := r.call(ctx, "", func(e *soapEnvelope) {
-		e.Body.Register = &registerRequest{
-			Email:    req.Email,
-			Password: req.Password,
-			Username: req.Username,
-			RoleId:   req.RoleId,
-		}
-	})
+	env := soapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://auth.soap.model.server.enfok/",
+	}
+	env.Body.Register = &registerRequest{
+		Email:    req.Email,
+		Password: req.Password,
+		Username: req.Username,
+		RoleId:   req.RoleId,
+	}
+
+	xmlData, _ := xml.Marshal(env)
+	_, err := r.client.Call(r.url, xmlData, "")
 	return err
 }
 
 func (r *authSoapRepository) LogOut(ctx context.Context, token string) error {
-	_, err := r.call(ctx, token, func(e *soapEnvelope) {
-		e.Body.LogOut = &struct{}{}
-	})
+	env := soapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://auth.soap.model.server.enfok/",
+	}
+	env.Body.LogOut = &struct{}{}
+
+	xmlData, _ := xml.Marshal(env)
+	_, err := r.client.Call(r.url, xmlData, token)
 	return err
 }
 
 func (r *authSoapRepository) ValidateToken(ctx context.Context, token string) (auth.ValidateResponse, error) {
-	resp, err := r.call(ctx, token, func(e *soapEnvelope) {
-		e.Body.ValidateToken = &struct{}{} // Genera <enf:validateToken/>
-	})
+	env := soapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://auth.soap.model.server.enfok/",
+	}
+	env.Body.ValidateToken = &struct{}{}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
 	if err != nil {
 		return auth.ValidateResponse{}, err
 	}
 
-	if resp.Body.ValidateTokenResponse == nil {
-		return auth.ValidateResponse{}, fmt.Errorf("empty validate response")
+	var soapResp soapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return auth.ValidateResponse{}, err
 	}
 
-	return resp.Body.ValidateTokenResponse.Return, nil
+	if soapResp.Body.ValidateTokenResponse == nil {
+		return auth.ValidateResponse{}, fmt.Errorf("invalid token")
+	}
+
+	return soapResp.Body.ValidateTokenResponse.Return, nil
 }
 
 func (r *authSoapRepository) ForgetPwd(ctx context.Context, req auth.ForgetPwdRequest) error {
-	_, err := r.call(ctx, "", func(e *soapEnvelope) {
-		e.Body.ForgetPwd = &forgetPwdRequest{Email: req.Email, NewPassword: req.NewPassword}
-	})
+	env := soapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://auth.soap.model.server.enfok/",
+	}
+	env.Body.ForgetPwd = &forgetPwdRequest{Email: req.Email, NewPassword: req.NewPassword}
+
+	xmlData, _ := xml.Marshal(env)
+	_, err := r.client.Call(r.url, xmlData, "")
 	return err
 }
 
 func (r *authSoapRepository) ResetPassword(ctx context.Context, token string, req auth.ResetPasswordRequest) error {
-	_, err := r.call(ctx, token, func(e *soapEnvelope) {
-		e.Body.ResetPassword = &resetPasswordRequest{NewPassword: req.NewPassword}
-	})
+	env := soapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://auth.soap.model.server.enfok/",
+	}
+	env.Body.ResetPassword = &resetPasswordRequest{NewPassword: req.NewPassword}
+
+	xmlData, _ := xml.Marshal(env)
+	_, err := r.client.Call(r.url, xmlData, token)
 	return err
 }

@@ -56,9 +56,12 @@ func (h *NodeHandler) ProcessBatch(c *gin.Context) {
 		return
 	}
 
-	filters := form.Value["filters"]
+	var transformations []node.Transformation
+	for _, f := range form.Value["filters"] {
+		transformations = append(transformations, node.Transformation{Name: f})
+	}
 
-	resp, err := h.nodeService.ProcessBatch(c.Request.Context(), token, files, filters)
+	resp, err := h.nodeService.ProcessBatch(c.Request.Context(), token, files, transformations)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -109,4 +112,38 @@ func (h *NodeHandler) GetBatchResults(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *NodeHandler) GetLogsByImage(c *gin.Context) {
+	token := extractToken(c)
+	imageUuid := c.Param("image_uuid")
+	if imageUuid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image_uuid required"})
+		return
+	}
+
+	logs, err := h.nodeService.GetLogsByImage(c.Request.Context(), token, imageUuid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, logs)
+}
+
+func (h *NodeHandler) GetMetricsByNode(c *gin.Context) {
+	token := extractToken(c)
+	nodeId := c.Param("node_id")
+	if nodeId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "node_id required"})
+		return
+	}
+
+	metrics, err := h.nodeService.GetMetricsByNode(c.Request.Context(), token, nodeId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, metrics)
 }

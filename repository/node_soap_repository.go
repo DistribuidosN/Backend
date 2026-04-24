@@ -1,22 +1,25 @@
 package repository
 
 import (
+	"Backend/infrastructure/soap"
 	"Backend/models/interfaces/adapters"
 	"Backend/models/node"
-	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
-	"io"
-	"net/http"
+	"time"
 )
 
 type nodeSoapRepository struct {
-	url string
+	client *soap.Client
+	url    string
 }
 
-func NewNodeRepository(url string) adapters.NodeRepository {
-	return &nodeSoapRepository{url: url}
+func NewNodeRepository(client *soap.Client, url string) adapters.NodeRepository {
+	return &nodeSoapRepository{
+		client: client,
+		url:    url,
+	}
 }
 
 // SOAP Structures
@@ -29,47 +32,58 @@ type nodeSoapEnvelope struct {
 		UploadBatch     *uploadBatchWrapper     `xml:"enf:uploadBatch,omitempty"`
 		GetBatchStatus  *getBatchStatusWrapper  `xml:"enf:getBatchStatus,omitempty"`
 		GetBatchResults *getBatchResultsWrapper `xml:"enf:getBatchResults,omitempty"`
+		GetLogsByImage  *getLogsByImageRequest  `xml:"enf:getLogsByImage,omitempty"`
+		GetMetricsByNode *getMetricsByNodeRequest `xml:"enf:getMetricsByNode,omitempty"`
 	} `xml:"soapenv:Body"`
 }
 
+type getLogsByImageRequest struct {
+	ImageUUID string `xml:"imageUuid"`
+}
+
+type getMetricsByNodeRequest struct {
+	NodeID string `xml:"nodeId"`
+}
+
+type uploadImagesRequest struct {
+	ImageData       string                `xml:"imageData"`
+	FileName        string                `xml:"fileName"`
+	Transformations []node.Transformation `xml:"transformations>transformation"`
+}
+
+type uploadBatchWrapper struct {
+	Request uploadBatchRequest `xml:"request"`
+}
+
 type uploadBatchRequest struct {
-	ID      string           `xml:"id"`
-	Filters []string         `xml:"filters"`
-	Images  []imageItemBatch `xml:"images"`
+	ID      string                `xml:"id"`
+	Filters []node.Transformation `xml:"filters"`
+	Images  []imageDto            `xml:"images"`
+}
+
+type getBatchStatusWrapper struct {
+	Request getBatchStatusRequest `xml:"request"`
 }
 
 type getBatchStatusRequest struct {
 	JobID string `xml:"jobId"`
 }
 
+type getBatchResultsWrapper struct {
+	Request getBatchResultsRequest `xml:"request"`
+}
+
 type getBatchResultsRequest struct {
 	JobID string `xml:"jobId"`
 }
 
-type imageItemBatch struct {
+type imageDto struct {
 	ID     string `xml:"id"`
 	Name   string `xml:"name"`
 	Base64 string `xml:"base64"`
 }
 
-type uploadImagesRequest struct {
-	ImageData       string                `xml:"imageData"`
-	FileName        string                `xml:"fileName"`
-	Transformations []node.Transformation `xml:"transformations"`
-	Parameters      []node.Transformation `xml:"parameters"`
-}
-
-type batchImage struct {
-	OriginalName string `xml:"originalName"`
-	Data         []byte `xml:"data"`
-}
-
-type uploadImagesBatchRequest struct {
-	Images          []batchImage          `xml:"images"`
-	Transformations []node.Transformation `xml:"transformations"`
-	Parameters      []node.Transformation `xml:"parameters"`
-}
-
+// Response Structures
 type nodeSoapResponse struct {
 	XMLName xml.Name `xml:"Envelope"`
 	Body    struct {
@@ -77,31 +91,10 @@ type nodeSoapResponse struct {
 		UploadBatchResponse     *uploadBatchResponse     `xml:"uploadBatchResponse,omitempty"`
 		GetBatchStatusResponse  *getBatchStatusResponse  `xml:"getBatchStatusResponse,omitempty"`
 		GetBatchResultsResponse *getBatchResultsResponse `xml:"getBatchResultsResponse,omitempty"`
+		Fault                   *soap.Fault             `xml:"Fault,omitempty"`
 	} `xml:"Body"`
 }
 
-type uploadBatchResponse struct {
-	Return struct {
-		Status  string `xml:"status"`
-		Message string `xml:"message"`
-		JobID   string `xml:"jobId"`
-	} `xml:"return"`
-}
-
-type getBatchStatusResponse struct {
-	Return struct {
-		JobID   string `xml:"jobId"`
-		Status  string `xml:"status"`
-		Message string `xml:"message"`
-	} `xml:"return"`
-}
-
-type getBatchResultsResponse struct {
-	Return struct {
-		JobID  string           `xml:"jobId"`
-		Images []imageItemBatch `xml:"images"`
-	} `xml:"return"`
-}
 type uploadImagesResponse struct {
 	Return struct {
 		Status  string `xml:"status"`
@@ -110,154 +103,282 @@ type uploadImagesResponse struct {
 	} `xml:"return"`
 }
 
-// --- NUEVOS WRAPPERS ---
-type uploadBatchWrapper struct {
-	Request *uploadBatchRequest `xml:"request"`
+type uploadBatchResponse struct {
+	Return struct {
+		BatchId   string `xml:"batchId"`
+		Status  string `xml:"status"`
+		Message string `xml:"message"`
+	} `xml:"return"`
 }
 
-type getBatchStatusWrapper struct {
-	Request *getBatchStatusRequest `xml:"request"`
+type getBatchStatusResponse struct {
+	Return struct {
+		BatchId   string `xml:"batchId"`
+		Status  string `xml:"status"`
+		Message string `xml:"message"`
+	} `xml:"return"`
 }
 
-type getBatchResultsWrapper struct {
-	Request *getBatchResultsRequest `xml:"request"`
+type getBatchResultsResponse struct {
+	Return struct {
+		BatchId  string     `xml:"batchId"`
+		Images []imageDto `xml:"images>image"`
+	} `xml:"return"`
 }
 
-// Repository Methods
+type getLogsByImageResponse struct {
+	Return []struct {
+		ID        int       `xml:"id"`
+		ImageUUID string    `xml:"imageUuid"`
+		Level     string    `xml:"level"`
+		Message   string    `xml:"message"`
+		CreatedAt time.Time `xml:"createdAt"`
+	} `xml:"return"`
+}
+
+type getMetricsByNodeResponse struct {
+	Return []struct {
+		ID          int       `xml:"id"`
+		NodeID      string    `xml:"nodeId"`
+		RAMUsage    float64   `xml:"ramUsage"`
+		CPUUsage    float64   `xml:"cpuUsage"`
+		BusyWorkers int       `xml:"busyWorkers"`
+		ReportedAt  time.Time `xml:"reportedAt"`
+	} `xml:"return"`
+}
 
 func (r *nodeSoapRepository) UploadImages(ctx context.Context, token string, req node.ImageUploadRequest) (node.UploadResponse, error) {
-	env := r.newEnvelope()
+	env := nodeSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://node.soap.model.server.enfok/",
+	}
 	env.Body.UploadImages = &uploadImagesRequest{
 		ImageData:       req.ImageData,
 		FileName:        req.FileName,
 		Transformations: req.Transformations,
-		Parameters:      []node.Transformation{},
 	}
-	resp, err := r.doCall(ctx, token, env)
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
 	if err != nil {
 		return node.UploadResponse{}, err
 	}
-	if resp.Body.UploadImagesResponse == nil {
-		return node.UploadResponse{}, fmt.Errorf("missing uploadImagesResponse")
+
+	var soapResp nodeSoapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return node.UploadResponse{}, err
 	}
-	ret := resp.Body.UploadImagesResponse.Return
-	return node.UploadResponse{Status: ret.Status, Message: ret.Message, FileURL: ret.FileURL}, nil
+
+	if soapResp.Body.UploadImagesResponse == nil {
+		return node.UploadResponse{}, fmt.Errorf("empty upload response")
+	}
+
+	ret := soapResp.Body.UploadImagesResponse.Return
+	return node.UploadResponse{
+		Status:  ret.Status,
+		Message: ret.Message,
+		FileURL: ret.FileURL,
+	}, nil
 }
 
 func (r *nodeSoapRepository) UploadBatch(ctx context.Context, token string, req node.NodeBatchRequest) (node.BatchJobResponse, error) {
-	env := r.newEnvelope()
-	images := make([]imageItemBatch, len(req.Images))
-	for i, img := range req.Images {
-		images[i] = imageItemBatch{ID: img.ID, Name: img.Name, Base64: img.Base64}
+	var images []imageDto
+	for _, img := range req.Images {
+		images = append(images, imageDto{ID: img.ID, Name: img.Name, Base64: img.Base64})
 	}
-	env.Body.UploadBatch = &uploadBatchWrapper{
-		Request: &uploadBatchRequest{ID: req.ID, Filters: req.Filters, Images: images},
-	}
-	resp, err := r.doCall(ctx, token, env)
-	if err != nil {
-		return node.BatchJobResponse{}, err
-	}
-	if resp.Body.UploadBatchResponse == nil {
-		return node.BatchJobResponse{}, fmt.Errorf("missing uploadBatchResponse")
-	}
-	ret := resp.Body.UploadBatchResponse.Return
-	return node.BatchJobResponse{JobID: ret.JobID, Status: ret.Status, Message: ret.Message}, nil
-}
 
-func (r *nodeSoapRepository) GetBatchStatus(ctx context.Context, token string, jobID string) (node.BatchStatusResponse, error) {
-	env := r.newEnvelope()
-	env.Body.GetBatchStatus = &getBatchStatusWrapper{
-		Request: &getBatchStatusRequest{JobID: jobID},
-	}
-	resp, err := r.doCall(ctx, token, env)
-	if err != nil {
-		return node.BatchStatusResponse{}, err
-	}
-	if resp.Body.GetBatchStatusResponse == nil {
-		return node.BatchStatusResponse{}, fmt.Errorf("missing getBatchStatusResponse")
-	}
-	ret := resp.Body.GetBatchStatusResponse.Return
-	return node.BatchStatusResponse{JobID: ret.JobID, Status: ret.Status, Message: ret.Message}, nil
-}
-
-func (r *nodeSoapRepository) GetBatchResults(ctx context.Context, token string, jobID string) (node.BatchResultsResponse, error) {
-	env := r.newEnvelope()
-	env.Body.GetBatchResults =&getBatchResultsWrapper{
-		Request: &getBatchResultsRequest{JobID: jobID},
-	}
-	resp, err := r.doCall(ctx, token, env)
-	if err != nil {
-		return node.BatchResultsResponse{}, err
-	}
-	if resp.Body.GetBatchResultsResponse == nil {
-		return node.BatchResultsResponse{}, fmt.Errorf("missing getBatchResultsResponse")
-	}
-	ret := resp.Body.GetBatchResultsResponse.Return
-	images := make([]node.ImageItem, len(ret.Images))
-	for i, img := range ret.Images {
-		images[i] = node.ImageItem{ID: img.ID, Name: img.Name, Base64: img.Base64}
-	}
-	return node.BatchResultsResponse{JobID: ret.JobID, Images: images}, nil
-}
-
-// Internal Helpers
-
-func (r *nodeSoapRepository) newEnvelope() *nodeSoapEnvelope {
-	return &nodeSoapEnvelope{
+	env := nodeSoapEnvelope{
 		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
 		Enf:     "http://node.soap.model.server.enfok/",
 	}
-}
-
-func (r *nodeSoapRepository) doCall(ctx context.Context, token string, env *nodeSoapEnvelope) (*nodeSoapResponse, error) {
-	xmlData, err := xml.Marshal(env)
-	if err != nil {
-		return nil, fmt.Errorf("marshal error: %w", err)
+	env.Body.UploadBatch = &uploadBatchWrapper{
+		Request: uploadBatchRequest{
+			ID:      req.ID,
+			Filters: req.Filters,
+			Images:  images,
+		},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", r.url, bytes.NewBuffer(xmlData))
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
 	if err != nil {
-		return nil, fmt.Errorf("request error: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("call error: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server error: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read error: %w", err)
+		return node.BatchJobResponse{}, err
 	}
 
 	var soapResp nodeSoapResponse
-	if err := xml.Unmarshal(data, &soapResp); err != nil {
-		return nil, fmt.Errorf("unmarshal error: %w", err)
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return node.BatchJobResponse{}, err
 	}
 
-	return &soapResp, nil
+	if soapResp.Body.Fault != nil {
+		return node.BatchJobResponse{}, fmt.Errorf("error del orquestador (SOAP Fault): %s", soapResp.Body.Fault.Reason())
+	}
+
+	if soapResp.Body.UploadBatchResponse == nil {
+		return node.BatchJobResponse{}, fmt.Errorf("empty batch response")
+	}
+
+	ret := soapResp.Body.UploadBatchResponse.Return
+	return node.BatchJobResponse{
+		BatchId:   ret.BatchId,
+		Status:  ret.Status,
+		Message: ret.Message,
+	}, nil
 }
 
-func mapBatchStatus(statusID int) string {
-	switch statusID {
-	case 1:
-		return "pending"
-	case 2:
-		return "processing"
-	case 3:
-		return "finished"
-	case 4:
-		return "failed"
-	default:
-		return "accepted"
+func (r *nodeSoapRepository) GetBatchStatus(ctx context.Context, token string, jobID string) (node.BatchStatusResponse, error) {
+	env := nodeSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://node.soap.model.server.enfok/",
 	}
+	env.Body.GetBatchStatus = &getBatchStatusWrapper{
+		Request: getBatchStatusRequest{JobID: jobID},
+	}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
+	if err != nil {
+		return node.BatchStatusResponse{}, err
+	}
+
+	var soapResp nodeSoapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return node.BatchStatusResponse{}, err
+	}
+
+	if soapResp.Body.Fault != nil {
+		return node.BatchStatusResponse{}, fmt.Errorf("error del orquestador (SOAP Fault): %s", soapResp.Body.Fault.Reason())
+	}
+
+	if soapResp.Body.GetBatchStatusResponse == nil {
+		return node.BatchStatusResponse{}, fmt.Errorf("empty status response")
+	}
+
+	ret := soapResp.Body.GetBatchStatusResponse.Return
+	return node.BatchStatusResponse{
+		BatchId:   ret.BatchId,
+		Status:  ret.Status,
+		Message: ret.Message,
+	}, nil
+}
+
+func (r *nodeSoapRepository) GetBatchResults(ctx context.Context, token string, jobID string) (node.BatchResultsResponse, error) {
+	env := nodeSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://node.soap.model.server.enfok/",
+	}
+	env.Body.GetBatchResults = &getBatchResultsWrapper{
+		Request: getBatchResultsRequest{JobID: jobID},
+	}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
+	if err != nil {
+		return node.BatchResultsResponse{}, err
+	}
+
+	var soapResp nodeSoapResponse
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return node.BatchResultsResponse{}, err
+	}
+
+	if soapResp.Body.Fault != nil {
+		return node.BatchResultsResponse{}, fmt.Errorf("error del orquestador (SOAP Fault): %s", soapResp.Body.Fault.Reason())
+	}
+
+	if soapResp.Body.GetBatchResultsResponse == nil {
+		return node.BatchResultsResponse{}, fmt.Errorf("empty results response")
+	}
+
+	ret := soapResp.Body.GetBatchResultsResponse.Return
+	var images []node.ImageItem
+	for _, img := range ret.Images {
+		images = append(images, node.ImageItem{ID: img.ID, Name: img.Name, Base64: img.Base64})
+	}
+
+	return node.BatchResultsResponse{
+		BatchId:   ret.BatchId,
+		Images: images,
+	}, nil
+}
+
+func (r *nodeSoapRepository) GetLogsByImage(ctx context.Context, token string, imageUuid string) ([]node.ProcessingLog, error) {
+	env := nodeSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://node.soap.model.server.enfok/",
+	}
+	env.Body.GetLogsByImage = &getLogsByImageRequest{ImageUUID: imageUuid}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
+	if err != nil {
+		return nil, err
+	}
+
+	var soapResp struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Body    struct {
+			Response *getLogsByImageResponse `xml:"getLogsByImageResponse,omitempty"`
+		} `xml:"Body"`
+	}
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return nil, err
+	}
+
+	if soapResp.Body.Response == nil {
+		return nil, fmt.Errorf("empty logs response")
+	}
+
+	var logs []node.ProcessingLog
+	for _, l := range soapResp.Body.Response.Return {
+		logs = append(logs, node.ProcessingLog{
+			ID:        l.ID,
+			ImageUUID: l.ImageUUID,
+			Level:     l.Level,
+			Message:   l.Message,
+			CreatedAt: l.CreatedAt,
+		})
+	}
+	return logs, nil
+}
+
+func (r *nodeSoapRepository) GetMetricsByNode(ctx context.Context, token string, nodeId string) ([]node.NodeMetric, error) {
+	env := nodeSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		Enf:     "http://node.soap.model.server.enfok/",
+	}
+	env.Body.GetMetricsByNode = &getMetricsByNodeRequest{NodeID: nodeId}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
+	if err != nil {
+		return nil, err
+	}
+
+	var soapResp struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Body    struct {
+			Response *getMetricsByNodeResponse `xml:"getMetricsByNodeResponse,omitempty"`
+		} `xml:"Body"`
+	}
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		return nil, err
+	}
+
+	if soapResp.Body.Response == nil {
+		return nil, fmt.Errorf("empty metrics response")
+	}
+
+	var metrics []node.NodeMetric
+	for _, m := range soapResp.Body.Response.Return {
+		metrics = append(metrics, node.NodeMetric{
+			ID:          m.ID,
+			NodeID:      m.NodeID,
+			RAMUsage:    m.RAMUsage,
+			CPUUsage:    m.CPUUsage,
+			BusyWorkers: m.BusyWorkers,
+			ReportedAt:  m.ReportedAt,
+		})
+	}
+	return metrics, nil
 }

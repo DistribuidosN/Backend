@@ -3,45 +3,55 @@ package routes
 import (
 	"Backend/config"
 	"Backend/handlers"
+	"Backend/infrastructure/soap"
 	"Backend/repository"
 	"Backend/services"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 func SetupRoutes(cfg config.Config) *gin.Engine {
 	r := gin.Default()
 	r.Use(handlers.RequestTrace())
+	r.Use(handlers.CORS())
 
 	authSoapURL := joinURL(cfg.ServerAppSOAPBase, "auth")
 	userSoapURL := joinURL(cfg.ServerAppSOAPBase, "user")
 	nodeSoapURL := joinURL(cfg.ServerAppSOAPBase, "node")
+	bdSoapURL := joinURL(cfg.ServerAppSOAPBase, "bd")
+
+	// 0. Infrastructure
+	soapClient := soap.NewClient()
 
 	// 1. Repositories (Adapters)
-	authRepo := repository.NewAuthSoapRepository(authSoapURL)
-	userRepo := repository.NewUserSoapRepository(userSoapURL)
-	nodeRepo := repository.NewNodeRepository(nodeSoapURL)
+	authRepo := repository.NewAuthSoapRepository(soapClient, authSoapURL)
+	userRepo := repository.NewUserSoapRepository(soapClient, userSoapURL)
+	nodeRepo := repository.NewNodeRepository(soapClient, nodeSoapURL)
+	bdRepo := repository.NewBdSoapRepository(soapClient, bdSoapURL)
 
 	// 2. Services (Logic)
 	authService := services.NewAuthService(authRepo)
 	userService := services.NewUserService(userRepo)
 	nodeService := services.NewNodeService(nodeRepo)
+	bdService := services.NewBdService(bdRepo)
 
 	// 3. Handlers (Delivery)
 	authHandler := handlers.NewAuthHandler(authService)
 	userHandler := handlers.NewUserHandler(userService)
 	nodeHandler := handlers.NewNodeHandler(nodeService)
+	bdHandler := handlers.NewBdHandler(bdService)
 
-	registerRESTRoutes(r.Group("/"), authHandler, userHandler, nodeHandler)
-	registerRESTRoutes(r.Group("/api/v1"), authHandler, userHandler, nodeHandler)
+	registerRESTRoutes(r.Group("/"), authHandler, userHandler, nodeHandler, bdHandler)
+	registerRESTRoutes(r.Group("/api/v1"), authHandler, userHandler, nodeHandler, bdHandler)
 
 	// Health check / Info
 	r.GET("/info", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":      "up",
-			"version":     "1.0.0",
-			"description": "Backend Proxy for SOAP Services",
+			"version":     "1.1.0",
+			"description": "Backend Proxy for Enfok Microservices (SOAP Bridge)",
 		})
 	})
 
@@ -52,7 +62,7 @@ func joinURL(base, path string) string {
 	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(path, "/")
 }
 
-func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandler, userHandler *handlers.UserHandler, nodeHandler *handlers.NodeHandler) {
+func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandler, userHandler *handlers.UserHandler, nodeHandler *handlers.NodeHandler, bdHandler *handlers.BdHandler) {
 	auth := group.Group("/auth")
 	{
 		auth.POST("/login", authHandler.Login)
@@ -74,6 +84,13 @@ func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandle
 		user.GET("/statistics", userHandler.GetStatistics)
 	}
 
+	// Rutas añadidas según requerimiento de telemetría
+	usersGroup := group.Group("/users/:user_uuid")
+	{
+		usersGroup.GET("/statistics", userHandler.GetStatistics)
+		usersGroup.GET("/activity", userHandler.GetActivity)
+	}
+
 	node := group.Group("/node")
 	{
 		node.POST("/upload", nodeHandler.UploadImages)
@@ -85,5 +102,17 @@ func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandle
 			batch.GET("/:id/status", nodeHandler.GetBatchStatus)
 			batch.GET("/:id/results", nodeHandler.GetBatchResults)
 		}
+	}
+
+	admin := group.Group("/admin")
+	{
+		admin.GET("/logs/:image_uuid", nodeHandler.GetLogsByImage)
+		admin.GET("/metrics/:node_id", nodeHandler.GetMetricsByNode)
+	}
+
+	bd := group.Group("/bd")
+	{
+		bd.GET("/gallery", bdHandler.GetPaginatedImages)
+		bd.GET("/batches", bdHandler.GetUserBatchesWithCovers)
 	}
 }

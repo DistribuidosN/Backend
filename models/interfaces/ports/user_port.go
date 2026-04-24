@@ -12,5 +12,5 @@ type UserService interface {
 	GetActivity(ctx context.Context, token string) ([]user.UserActivity, error)
 	SearchUser(ctx context.Context, token string, uid string) (user.UserProfile, error)
 	DeleteAccount(ctx context.Context, token string) error
-	GetStatistics(ctx context.Context, token string) (user.UserStats, error)
+	GetStatistics(ctx context.Context, token string) (user.UserStatistics, error)
 }

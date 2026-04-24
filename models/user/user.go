@@ -1,5 +1,7 @@
 package user
 
+import "time"
+
 // UserProfile represents user profile data
 type UserProfile struct {
 	ID        int    `json:"id"`
@@ -11,17 +13,20 @@ type UserProfile struct {
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
-// UserActivity represents a single user activity record
+// UserActivity representa una entrada en el historial de procesamiento
 type UserActivity struct {
-	ID        string `json:"id"`
-	Action    string `json:"action"`
-	Timestamp string `json:"timestamp"`
+	BatchID     string    `json:"batch_id"`
+	RequestTime time.Time `json:"request_time"`
+	Status      string    `json:"status"`
+	ImageCount  int       `json:"image_count"`
 }
 
-// UserStats represents user usage statistics
-type UserStats struct {
-	ImagesUploaded int `json:"imagesUploaded"`
-	TotalLogins    int `json:"totalLogins"`
+// UserStatistics representa los datos agregados de uso de un usuario
+type UserStatistics struct {
+	TotalBatches    int `json:"total_batches"`
+	TotalImages     int `json:"total_images"`
+	ImagesCompleted int `json:"images_completed"`
+	ImagesFailed    int `json:"images_failed"`
 }
 
 // UserUpdateResponse matches the contract consumed by ServerApp.
