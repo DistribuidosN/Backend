@@ -19,16 +19,16 @@ func NewUserHandler(s ports.UserService) *UserHandler {
 func (h *UserHandler) GetProfile(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 		return
 	}
 
 	profile, err := h.userService.GetProfile(c.Request.Context(), token)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	c.PureJSON(http.StatusOK, gin.H{
 		"username": profile.Username,
 		"status":   profile.Status,
 	})
@@ -38,15 +38,15 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	token := extractToken(c)
 	var data user.UserProfile
 	if err := c.ShouldBindJSON(&data); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
 	if err := h.userService.UpdateProfile(c.Request.Context(), token, data); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, user.UserUpdateResponse{
+	c.PureJSON(http.StatusOK, user.UserUpdateResponse{
 		Message:  "profile updated successfully",
 		Username: data.Username,
 		Valid:    true,
@@ -57,10 +57,10 @@ func (h *UserHandler) GetActivity(c *gin.Context) {
 	token := extractToken(c)
 	activities, err := h.userService.GetActivity(c.Request.Context(), token)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, activities)
+	c.PureJSON(http.StatusOK, activities)
 }
 
 func (h *UserHandler) SearchUser(c *gin.Context) {
@@ -70,33 +70,33 @@ func (h *UserHandler) SearchUser(c *gin.Context) {
 		uid = c.Query("username")
 	}
 	if uid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "uid or username parameter required"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "uid or username parameter required"})
 		return
 	}
 
 	user, err := h.userService.SearchUser(c.Request.Context(), token, uid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, user)
+	c.PureJSON(http.StatusOK, user)
 }
 
 func (h *UserHandler) DeleteAccount(c *gin.Context) {
 	token := extractToken(c)
 	if err := h.userService.DeleteAccount(c.Request.Context(), token); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "account deleted successfully"})
+	c.PureJSON(http.StatusOK, gin.H{"message": "account deleted successfully"})
 }
 
 func (h *UserHandler) GetStatistics(c *gin.Context) {
 	token := extractToken(c)
 	stats, err := h.userService.GetStatistics(c.Request.Context(), token)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, stats)
+	c.PureJSON(http.StatusOK, stats)
 }

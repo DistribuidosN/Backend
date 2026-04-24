@@ -22,3 +22,7 @@ func (s *bdService) GetPaginatedImages(ctx context.Context, token string, batchU
 func (s *bdService) GetUserBatchesWithCovers(ctx context.Context, token string) ([]bd.BatchWithCover, error) {
 	return s.repo.GetUserBatchesWithCovers(ctx, token)
 }
+
+func (s *bdService) GetImageMetrics(ctx context.Context, token string, imageUuid string) ([]bd.NodeMetricsDTO, error) {
+	return s.repo.GetImageMetrics(ctx, token, imageUuid)
+}

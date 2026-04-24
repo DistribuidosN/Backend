@@ -19,7 +19,7 @@ func NewBdHandler(s ports.BdService) *BdHandler {
 func (h *BdHandler) GetPaginatedImages(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 		return
 	}
 
@@ -29,25 +29,47 @@ func (h *BdHandler) GetPaginatedImages(c *gin.Context) {
 
 	resp, err := h.service.GetPaginatedImages(c.Request.Context(), token, batchUuid, page, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.PureJSON(http.StatusOK, resp)
 }
 
 func (h *BdHandler) GetUserBatchesWithCovers(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 		return
 	}
 
 	resp, err := h.service.GetUserBatchesWithCovers(c.Request.Context(), token)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.PureJSON(http.StatusOK, resp)
+}
+
+func (h *BdHandler) GetImageMetrics(c *gin.Context) {
+	token := extractToken(c)
+	if token == "" {
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		return
+	}
+
+	imageUuid := c.Param("image_uuid")
+	if imageUuid == "" {
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "image_uuid is required"})
+		return
+	}
+
+	resp, err := h.service.GetImageMetrics(c.Request.Context(), token, imageUuid)
+	if err != nil {
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.PureJSON(http.StatusOK, resp)
 }

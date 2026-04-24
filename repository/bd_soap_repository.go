@@ -29,7 +29,12 @@ type bdSoapEnvelope struct {
 	Body    struct {
 		GetPaginatedImages       *getPaginatedImagesRequest `xml:"bd:getPaginatedImages,omitempty"`
 		GetUserBatchesWithCovers *struct{}                  `xml:"bd:getUserBatchesWithCovers,omitempty"`
+		GetImageMetrics          *getImageMetricsRequest    `xml:"bd:getImageMetrics,omitempty"`
 	} `xml:"soapenv:Body"`
+}
+
+type getImageMetricsRequest struct {
+	ImageUUID string `xml:"imageUuid"`
 }
 
 type getPaginatedImagesRequest struct {
@@ -42,10 +47,15 @@ type getPaginatedImagesRequest struct {
 type bdSoapResponseEnvelope struct {
 	XMLName xml.Name `xml:"Envelope"`
 	Body    struct {
-		PaginatedImagesResponse   *paginatedResp `xml:"getPaginatedImagesResponse,omitempty"`
-		BatchesWithCoversResponse *batchesResp   `xml:"getUserBatchesWithCoversResponse,omitempty"`
-		Fault                     *soap.Fault    `xml:"Fault,omitempty"`
+		PaginatedImagesResponse   *paginatedResp     `xml:"getPaginatedImagesResponse,omitempty"`
+		BatchesWithCoversResponse *batchesResp       `xml:"getUserBatchesWithCoversResponse,omitempty"`
+		GetImageMetricsResponse   *imageMetricsResp  `xml:"getImageMetricsResponse,omitempty"`
+		Fault                     *soap.Fault        `xml:"Fault,omitempty"`
 	} `xml:"Body"`
+}
+
+type imageMetricsResp struct {
+	Return []bd.NodeMetricsDTO `xml:"return"`
 }
 
 type paginatedResp struct {
@@ -134,4 +144,37 @@ func (r *bdSoapRepository) GetUserBatchesWithCovers(ctx context.Context, token s
 	}
 
 	return soapResp.Body.BatchesWithCoversResponse.Return, nil
+}
+
+func (r *bdSoapRepository) GetImageMetrics(ctx context.Context, token string, imageUuid string) ([]bd.NodeMetricsDTO, error) {
+	env := bdSoapEnvelope{
+		Soapenv: "http://schemas.xmlsoap.org/soap/envelope/",
+		BdNS:    "http://bd.soap.model.server.enfok/",
+	}
+	env.Body.GetImageMetrics = &getImageMetricsRequest{
+		ImageUUID: imageUuid,
+	}
+
+	xmlData, _ := xml.Marshal(env)
+	resp, err := r.client.Call(r.url, xmlData, token)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("[DEBUG BACKEND] Image Metrics RAW XML: %s\n", string(resp))
+	var soapResp bdSoapResponseEnvelope
+	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		fmt.Printf("[ERROR BACKEND] Error unmarshalling image metrics: %v\n", err)
+		return nil, fmt.Errorf("error al procesar respuesta XML: %w", err)
+	}
+
+	if soapResp.Body.Fault != nil {
+		return nil, fmt.Errorf("error del orquestador (SOAP Fault): %s", soapResp.Body.Fault.Reason())
+	}
+
+	if soapResp.Body.GetImageMetricsResponse == nil {
+		return make([]bd.NodeMetricsDTO, 0), nil
+	}
+
+	return soapResp.Body.GetImageMetricsResponse.Return, nil
 }

@@ -114,5 +114,6 @@ func registerRESTRoutes(group *gin.RouterGroup, authHandler *handlers.AuthHandle
 	{
 		bd.GET("/gallery", bdHandler.GetPaginatedImages)
 		bd.GET("/batches", bdHandler.GetUserBatchesWithCovers)
+		bd.GET("/image/:image_uuid/metrics", bdHandler.GetImageMetrics)
 	}
 }

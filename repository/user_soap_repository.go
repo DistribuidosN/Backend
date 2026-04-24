@@ -73,10 +73,11 @@ type profileResponse struct {
 
 type getUserActivityResponse struct {
 	Return []struct {
-		BatchID     string    `xml:"batchId"`
-		RequestTime time.Time `xml:"requestTime"`
-		Status      string    `xml:"status"`
-		ImageCount  int       `xml:"imageCount"`
+		EventType   string `xml:"eventType"`
+		RefUUID     string `xml:"refUuid"`
+		ParentUUID  string `xml:"parentUuid"`
+		Description string `xml:"description"`
+		OccurredAt  string `xml:"occurredAt"`
 	} `xml:"return"`
 }
 
@@ -94,10 +95,14 @@ type searchUserResponse struct {
 
 type getUserStatisticsResponse struct {
 	Return struct {
-		TotalBatches    int `xml:"totalBatches"`
-		TotalImages     int `xml:"totalImages"`
-		ImagesCompleted int `xml:"imagesCompleted"`
-		ImagesFailed    int `xml:"imagesFailed"`
+		TotalBatches       int `xml:"totalBatches"`
+		TotalImages        int `xml:"totalImages"`
+		ImagesSuccess      int `xml:"imagesSuccess"`
+		ImagesFailed       int `xml:"imagesFailed"`
+		TopTransformations []struct {
+			Name  string `xml:"name"`
+			Count int    `xml:"count"`
+		} `xml:"topTransformations"`
 	} `xml:"return"`
 }
 
@@ -114,10 +119,13 @@ func (r *userSoapRepository) GetProfile(ctx context.Context, token string) (user
 		return user.UserProfile{}, err
 	}
 
+	fmt.Printf("[DEBUG BACKEND] Profile RAW XML: %s\n", string(resp))
 	var soapResp userSoapResponse
 	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		fmt.Printf("[ERROR BACKEND] Error unmarshalling profile: %v\n", err)
 		return user.UserProfile{}, err
 	}
+	fmt.Printf("[DEBUG BACKEND] Profile DTO: %+v\n", soapResp.Body.ProfileResponse)
 
 	if soapResp.Body.ProfileResponse == nil {
 		return user.UserProfile{}, fmt.Errorf("empty profile response")
@@ -165,10 +173,13 @@ func (r *userSoapRepository) GetActivity(ctx context.Context, token string) ([]u
 		return nil, err
 	}
 
+	fmt.Printf("[DEBUG BACKEND] Activity RAW XML: %s\n", string(resp))
 	var soapResp userSoapResponse
 	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		fmt.Printf("[ERROR BACKEND] Error unmarshalling activity: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[DEBUG BACKEND] Activity DTO Items: %d\n", len(soapResp.Body.GetUserActivityResponse.Return))
 
 	if soapResp.Body.GetUserActivityResponse == nil {
 		return nil, fmt.Errorf("empty activity response")
@@ -177,13 +188,33 @@ func (r *userSoapRepository) GetActivity(ctx context.Context, token string) ([]u
 	var activities []user.UserActivity
 	for _, a := range soapResp.Body.GetUserActivityResponse.Return {
 		activities = append(activities, user.UserActivity{
-			BatchID:     a.BatchID,
-			RequestTime: a.RequestTime,
-			Status:      a.Status,
-			ImageCount:  a.ImageCount,
+			EventType:   a.EventType,
+			RefUUID:     a.RefUUID,
+			ParentUUID:  a.ParentUUID,
+			Description: a.Description,
+			OccurredAt:  parseSOAPTime(a.OccurredAt),
 		})
 	}
 	return activities, nil
+}
+
+func parseSOAPTime(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	// Intentar varios formatos comunes de Java ISO
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999Z",
+		"2006-01-02T15:04:05",
+	}
+	for _, f := range formats {
+		t, err := time.Parse(f, s)
+		if err == nil {
+			return &t
+		}
+	}
+	return nil
 }
 
 func (r *userSoapRepository) SearchUser(ctx context.Context, token string, uid string) (user.UserProfile, error) {
@@ -245,20 +276,32 @@ func (r *userSoapRepository) GetStatistics(ctx context.Context, token string) (u
 		return user.UserStatistics{}, err
 	}
 
+	fmt.Printf("[DEBUG BACKEND] Statistics RAW XML: %s\n", string(resp))
 	var soapResp userSoapResponse
 	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		fmt.Printf("[ERROR BACKEND] Error unmarshalling statistics: %v\n", err)
 		return user.UserStatistics{}, err
 	}
+	fmt.Printf("[DEBUG BACKEND] Statistics DTO: %+v\n", soapResp.Body.GetUserStatisticsResponse)
 
 	if soapResp.Body.GetUserStatisticsResponse == nil {
 		return user.UserStatistics{}, fmt.Errorf("empty statistics response")
 	}
 
 	ret := soapResp.Body.GetUserStatisticsResponse.Return
+	top := make([]user.TransformationStat, 0)
+	for _, t := range ret.TopTransformations {
+		top = append(top, user.TransformationStat{
+			Name:  t.Name,
+			Count: t.Count,
+		})
+	}
+
 	return user.UserStatistics{
-		TotalBatches:    ret.TotalBatches,
-		TotalImages:     ret.TotalImages,
-		ImagesCompleted: ret.ImagesCompleted,
-		ImagesFailed:    ret.ImagesFailed,
+		TotalBatches:       ret.TotalBatches,
+		TotalImages:        ret.TotalImages,
+		ImagesCompleted:    ret.ImagesSuccess,
+		ImagesFailed:       ret.ImagesFailed,
+		TopTransformations: top,
 	}, nil
 }

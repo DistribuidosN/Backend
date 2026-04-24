@@ -19,40 +19,40 @@ func NewNodeHandler(s ports.NodeService) *NodeHandler {
 func (h *NodeHandler) UploadImages(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 		return
 	}
 
 	var req node.ImageUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
 	resp, err := h.nodeService.UploadImages(c.Request.Context(), token, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	c.PureJSON(http.StatusOK, resp)
 }
 
 func (h *NodeHandler) ProcessBatch(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 		return
 	}
 
 	form, err := c.MultipartForm()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse multipart form"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "failed to parse multipart form"})
 		return
 	}
 
 	files := form.File["images"]
 	if len(files) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no images provided"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "no images provided"})
 		return
 	}
 
@@ -63,87 +63,87 @@ func (h *NodeHandler) ProcessBatch(c *gin.Context) {
 
 	resp, err := h.nodeService.ProcessBatch(c.Request.Context(), token, files, transformations)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.PureJSON(http.StatusOK, resp)
 }
 
 func (h *NodeHandler) GetBatchStatus(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 		return
 	}
 
 	jobID := c.Param("id")
 	if jobID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing job id"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "missing job id"})
 		return
 	}
 
 	resp, err := h.nodeService.GetBatchStatus(c.Request.Context(), token, jobID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.PureJSON(http.StatusOK, resp)
 }
 
 func (h *NodeHandler) GetBatchResults(c *gin.Context) {
 	token := extractToken(c)
 	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
+		c.PureJSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 		return
 	}
 
 	jobID := c.Param("id")
 	if jobID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing job id"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "missing job id"})
 		return
 	}
 
 	resp, err := h.nodeService.GetBatchResults(c.Request.Context(), token, jobID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.PureJSON(http.StatusOK, resp)
 }
 
 func (h *NodeHandler) GetLogsByImage(c *gin.Context) {
 	token := extractToken(c)
 	imageUuid := c.Param("image_uuid")
 	if imageUuid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "image_uuid required"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "image_uuid required"})
 		return
 	}
 
 	logs, err := h.nodeService.GetLogsByImage(c.Request.Context(), token, imageUuid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, logs)
+	c.PureJSON(http.StatusOK, logs)
 }
 
 func (h *NodeHandler) GetMetricsByNode(c *gin.Context) {
 	token := extractToken(c)
 	nodeId := c.Param("node_id")
 	if nodeId == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "node_id required"})
+		c.PureJSON(http.StatusBadRequest, gin.H{"error": "node_id required"})
 		return
 	}
 
 	metrics, err := h.nodeService.GetMetricsByNode(c.Request.Context(), token, nodeId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.PureJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, metrics)
+	c.PureJSON(http.StatusOK, metrics)
 }

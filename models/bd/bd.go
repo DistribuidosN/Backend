@@ -1,5 +1,18 @@
 package bd
 
+
+
+// NodeMetricsDTO representa la trazabilidad de consumo de recursos de los nodos para una imagen.
+type NodeMetricsDTO struct {
+	NodeID        string   `json:"node_id" xml:"nodeId"`
+	ImageUUID     string   `json:"image_uuid" xml:"imageUuid"`
+	RamUsedMB     float64  `json:"ram_used_mb" xml:"ramUsedMB"`
+	CPUPercent    float64  `json:"cpu_percent" xml:"cpuPercent"`
+	AvgLatencyMS  *float64 `json:"avg_latency_ms" xml:"avgLatencyMS"`
+	UptimeSeconds int64    `json:"uptime_seconds" xml:"uptimeSeconds"`
+	ReportedAt    string   `json:"reported_at" xml:"reportedAt"`
+}
+
 // PaginatedImages representa una galería con información de paginación.
 type PaginatedImages struct {
 	Images      []Image `json:"images" xml:"images"`

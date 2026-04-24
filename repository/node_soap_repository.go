@@ -128,22 +128,22 @@ type getBatchResultsResponse struct {
 
 type getLogsByImageResponse struct {
 	Return []struct {
-		ID        int       `xml:"id"`
-		ImageUUID string    `xml:"imageUuid"`
-		Level     string    `xml:"level"`
-		Message   string    `xml:"message"`
-		CreatedAt time.Time `xml:"createdAt"`
+		ID        int    `xml:"id"`
+		ImageUUID string `xml:"imageUuid"`
+		Level     string `xml:"level"`
+		Message   string `xml:"message"`
+		CreatedAt string `xml:"createdAt"`
 	} `xml:"return"`
 }
 
 type getMetricsByNodeResponse struct {
 	Return []struct {
-		ID          int       `xml:"id"`
-		NodeID      string    `xml:"nodeId"`
-		RAMUsage    float64   `xml:"ramUsage"`
-		CPUUsage    float64   `xml:"cpuUsage"`
-		BusyWorkers int       `xml:"busyWorkers"`
-		ReportedAt  time.Time `xml:"reportedAt"`
+		ID          int     `xml:"id"`
+		NodeID      string  `xml:"nodeId"`
+		RAMUsage    float64 `xml:"ramUsage"`
+		CPUUsage    float64 `xml:"cpuUsage"`
+		BusyWorkers int     `xml:"busyWorkers"`
+		ReportedAt  string  `xml:"reportedAt"`
 	} `xml:"return"`
 }
 
@@ -321,7 +321,9 @@ func (r *nodeSoapRepository) GetLogsByImage(ctx context.Context, token string, i
 			Response *getLogsByImageResponse `xml:"getLogsByImageResponse,omitempty"`
 		} `xml:"Body"`
 	}
+	fmt.Printf("[DEBUG BACKEND] Logs RAW XML: %s\n", string(resp))
 	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		fmt.Printf("[ERROR BACKEND] Error unmarshalling logs: %v\n", err)
 		return nil, err
 	}
 
@@ -331,12 +333,17 @@ func (r *nodeSoapRepository) GetLogsByImage(ctx context.Context, token string, i
 
 	var logs []node.ProcessingLog
 	for _, l := range soapResp.Body.Response.Return {
+		created := time.Time{}
+		t := parseNodeSOAPTime(l.CreatedAt)
+		if t != nil {
+			created = *t
+		}
 		logs = append(logs, node.ProcessingLog{
 			ID:        l.ID,
 			ImageUUID: l.ImageUUID,
 			Level:     l.Level,
 			Message:   l.Message,
-			CreatedAt: l.CreatedAt,
+			CreatedAt: created,
 		})
 	}
 	return logs, nil
@@ -361,7 +368,9 @@ func (r *nodeSoapRepository) GetMetricsByNode(ctx context.Context, token string,
 			Response *getMetricsByNodeResponse `xml:"getMetricsByNodeResponse,omitempty"`
 		} `xml:"Body"`
 	}
+	fmt.Printf("[DEBUG BACKEND] Metrics RAW XML: %s\n", string(resp))
 	if err := xml.Unmarshal(resp, &soapResp); err != nil {
+		fmt.Printf("[ERROR BACKEND] Error unmarshalling metrics: %v\n", err)
 		return nil, err
 	}
 
@@ -371,14 +380,37 @@ func (r *nodeSoapRepository) GetMetricsByNode(ctx context.Context, token string,
 
 	var metrics []node.NodeMetric
 	for _, m := range soapResp.Body.Response.Return {
+		reported := time.Time{}
+		t := parseNodeSOAPTime(m.ReportedAt)
+		if t != nil {
+			reported = *t
+		}
 		metrics = append(metrics, node.NodeMetric{
 			ID:          m.ID,
 			NodeID:      m.NodeID,
 			RAMUsage:    m.RAMUsage,
 			CPUUsage:    m.CPUUsage,
 			BusyWorkers: m.BusyWorkers,
-			ReportedAt:  m.ReportedAt,
+			ReportedAt:  reported,
 		})
 	}
 	return metrics, nil
+}
+
+func parseNodeSOAPTime(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999Z",
+		"2006-01-02T15:04:05",
+	}
+	for _, f := range formats {
+		t, err := time.Parse(f, s)
+		if err == nil {
+			return &t
+		}
+	}
+	return nil
 }

@@ -9,4 +9,5 @@ import (
 type BdRepository interface {
 	GetPaginatedImages(ctx context.Context, token string, batchUuid string, page int, limit int) (bd.PaginatedImages, error)
 	GetUserBatchesWithCovers(ctx context.Context, token string) ([]bd.BatchWithCover, error)
+	GetImageMetrics(ctx context.Context, token string, imageUuid string) ([]bd.NodeMetricsDTO, error)
 }

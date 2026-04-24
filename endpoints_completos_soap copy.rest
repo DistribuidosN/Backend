@@ -1,0 +1,242 @@
+### =============================================================================
+### ENFOK - SISTEMA INTEGRAL SOAP (ORQUESTADOR CENTRAL)
+### =============================================================================
+### Este archivo consolida todos los servicios SOAP disponibles en el sistema.
+### Servicios: AuthService, UserService, BdService, NodeService.
+### =============================================================================
+
+@host = localhost:8080
+@authToken = Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX3V1aWQiOiI5OWZhYTg5Ny0xNTIyLTRkYmQtYWM2Zi1jOTgzZTU1ZTAyNmMiLCJ1c2VybmFtZSI6Imp1YW5fYWN0dWFsaXphZG8iLCJyb2xlIjoiMSIsImlzcyI6ImF1dGgtc2VydmVyIiwic3ViIjoiOTlmYWE4OTctMTUyMi00ZGJkLWFjNmYtYzk4M2U1NWUwMjZjIiwiZXhwIjoxNzc3MDQ5NDg2LCJpYXQiOjE3NzY5NjMwODZ9.-lC44-IV2TUjbpljiakDLsVxfgi_S8u-Gocu1EpvC0Q
+
+# =============================================================================
+# 1. AUTH SERVICE (AuthService)
+# Namespace: http://auth.soap.model.server.enfok/
+# =============================================================================
+
+## 1.1 LOGIN
+POST http://{{host}}/AuthService
+Content-Type: text/xml
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:auth="http://auth.soap.model.server.enfok/">
+   <soapenv:Body>
+      <auth:login>
+         <username>lcuru</username>
+         <password>admin123</password>
+      </auth:login>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 1.2 REGISTRO DE USUARIO
+POST http://{{host}}/AuthService
+Content-Type: text/xml
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:auth="http://auth.soap.model.server.enfok/">
+   <soapenv:Body>
+      <auth:register>
+         <username>nuevo_usuario</username>
+         <password>Enfok2024!</password>
+         <email>usuario@enfok.com</email>
+      </auth:register>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 1.3 VALIDAR TOKEN
+POST http://{{host}}/AuthService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:auth="http://auth.soap.model.server.enfok/">
+   <soapenv:Body>
+      <auth:validateToken>
+      </auth:validateToken>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+# =============================================================================
+# 2. USER SERVICE (UserService)
+# Namespace: http://user.soap.model.server.enfok/
+# =============================================================================
+
+## 2.1 PERFIL DE USUARIO
+POST http://{{host}}/UserService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:user="http://user.soap.model.server.enfok/">
+   <soapenv:Body>
+      <user:profile/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 2.2 ESTADÍSTICAS DEL USUARIO
+POST http://{{host}}/UserService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:user="http://user.soap.model.server.enfok/">
+   <soapenv:Body>
+      <user:getUserStatistics/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 2.3 ACTIVIDAD RECIENTE
+POST http://{{host}}/UserService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:user="http://user.soap.model.server.enfok/">
+   <soapenv:Body>
+      <user:getUserActivity/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+# =============================================================================
+# 3. BD SERVICE (BdService)
+# Namespace: http://bd.soap.model.server.enfok/
+# =============================================================================
+
+## 3.1 GALERÍA DE IMÁGENES PAGINADA
+POST http://{{host}}/BdService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bd="http://bd.soap.model.server.enfok/">
+   <soapenv:Body>
+      <bd:getPaginatedImages>
+         <batchUuid>uuid-del-lote</batchUuid>
+         <page>1</page>
+         <limit>20</limit>
+      </bd:getPaginatedImages>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 3.2 LISTAR LOTES CON IMAGEN DE PORTADA
+POST http://{{host}}/BdService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bd="http://bd.soap.model.server.enfok/">
+   <soapenv:Body>
+      <bd:getUserBatchesWithCovers/>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 3.3 MÉTRICAS POR IMAGEN (TRAZABILIDAD DE RECURSOS)
+POST http://{{host}}/BdService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bd="http://bd.soap.model.server.enfok/">
+   <soapenv:Body>
+      <bd:getImageMetrics>
+         <imageUuid>uuid-de-la-imagen</imageUuid>
+      </bd:getImageMetrics>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+# =============================================================================
+# 4. NODE SERVICE (NodeService)
+# Namespace: http://node.soap.model.server.enfok/
+# =============================================================================
+
+## 4.1 SUBIR IMAGEN INDIVIDUAL (PIPELINE DINÁMICO)
+POST http://{{host}}/NodeService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:node="http://node.soap.model.server.enfok/">
+   <soapenv:Body>
+      <node:uploadImages>
+         <imageData>BASE64_BYTES</imageData>
+         <fileName>test.png</fileName>
+         <transformations>
+            <transformation>
+               <name>rotate</name>
+               <params>{"angle": 90}</params>
+            </transformation>
+            <transformation>
+               <name>grayscale</name>
+               <params>{}</params>
+            </transformation>
+         </transformations>
+      </node:uploadImages>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 4.2 CARGA MASIVA DE BATCH (JSON DTO)
+POST http://{{host}}/NodeService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:node="http://node.soap.model.server.enfok/">
+   <soapenv:Body>
+      <node:uploadBatch>
+         <request>
+            <id>batch-001</id>
+            <filters>
+               <filter>
+                  <name>resize</name>
+                  <params>{"width": 100, "height": 100}</params>
+               </filter>
+            </filters>
+            <images>
+               <image>
+                  <id>img-1</id>
+                  <name>img.jpg</name>
+                  <base64>BASE64_DATA</base64>
+               </image>
+            </images>
+         </request>
+      </node:uploadBatch>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 4.3 OBTENER LOGS DE PROCESAMIENTO
+POST http://{{host}}/NodeService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:node="http://node.soap.model.server.enfok/">
+   <soapenv:Body>
+      <node:getLogsByImage>
+         <imageUuid>img-uuid-aqui</imageUuid>
+      </node:getLogsByImage>
+   </soapenv:Body>
+</soapenv:Envelope>
+
+###
+
+## 4.4 MÉTRICAS DEL NODO
+POST http://{{host}}/NodeService
+Content-Type: text/xml
+Authorization: {{authToken}}
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:node="http://node.soap.model.server.enfok/">
+   <soapenv:Body>
+      <node:getMetricsByNode>
+         <nodeId>nodo-go-1</nodeId>
+      </node:getMetricsByNode>
+   </soapenv:Body>
+</soapenv:Envelope>
