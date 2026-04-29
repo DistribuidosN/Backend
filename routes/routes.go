@@ -19,7 +19,9 @@ func SetupRoutes(cfg config.Config) *gin.Engine {
 	
 	// Configuración de CORS oficial para evitar bloqueos en Flutter Web y Ngrok
 	r.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
+		AllowOriginFunc: func(origin string) bool {
+			return true
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "ngrok-skip-browser-warning"},
 		ExposeHeaders:    []string{"Content-Length"},
