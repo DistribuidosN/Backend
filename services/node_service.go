@@ -14,18 +14,25 @@ import (
 )
 
 type nodeService struct {
-	repo adapters.NodeRepository
+	repo     adapters.NodeRepository
+	masterIP string
 }
 
 // NewNodeService creates a new instance of the node service
-func NewNodeService(repo adapters.NodeRepository) ports.NodeService {
+func NewNodeService(repo adapters.NodeRepository, masterIP string) ports.NodeService {
 	return &nodeService{
-		repo: repo,
+		repo:     repo,
+		masterIP: masterIP,
 	}
 }
 
 func (s *nodeService) UploadImages(ctx context.Context, token string, req node.ImageUploadRequest) (node.UploadResponse, error) {
-	return s.repo.UploadImages(ctx, token, req)
+	resp, err := s.repo.UploadImages(ctx, token, req)
+	if err != nil {
+		return node.UploadResponse{}, err
+	}
+	resp.FileURL = utils.FixIP(resp.FileURL, s.masterIP)
+	return resp, nil
 }
 
 func (s *nodeService) ProcessBatch(ctx context.Context, token string, files []*multipart.FileHeader, filters []node.Transformation) (node.BatchJobResponse, error) {

@@ -9,14 +9,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 )
 
 func SetupRoutes(cfg config.Config) *gin.Engine {
 	r := gin.Default()
 	r.Use(handlers.RequestTrace())
-	
+
 	// Configuración de CORS oficial para evitar bloqueos en Flutter Web y Ngrok
 	r.Use(cors.New(cors.Config{
 		AllowOriginFunc: func(origin string) bool {
@@ -47,9 +47,9 @@ func SetupRoutes(cfg config.Config) *gin.Engine {
 	// 2. Services (Logic)
 	authService := services.NewAuthService(authRepo)
 	userService := services.NewUserService(userRepo)
-	nodeService := services.NewNodeService(nodeRepo)
-	bdService := services.NewBdService(bdRepo)
-	batchService := services.NewBatchService(batchRepo)
+	nodeService := services.NewNodeService(nodeRepo, cfg.MasterIP)
+	bdService := services.NewBdService(bdRepo, cfg.MasterIP)
+	batchService := services.NewBatchService(batchRepo, cfg.MasterIP)
 
 	// 3. Handlers (Delivery)
 	authHandler := handlers.NewAuthHandler(authService)
